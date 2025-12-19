@@ -38,9 +38,9 @@ class FileHunterSyncer:
         # AllFiles
         self.log("Baixando listagem de arquivos...")
         r = requests.get(f"{self.BASE_URL}allfiles.txt", headers=self.HEADERS)
-        # Normaliza removendo './' se existir
-        lines = [l.strip().lstrip("./").replace("\\", "/") for l in r.text.splitlines() if l.strip()]
-        self.db.clear_and_populate_files("allfiles", lines)
+        # Normaliza removendo './' e garante que vazios sejam descartados
+        lines = [l.strip().lstrip("./") for l in r.text.splitlines() if l.strip()]
+        self.db.clear_and_populate_files(lines)
 
         # SHA1
         self.log("Baixando hashes SHA1...")
@@ -49,11 +49,10 @@ class FileHunterSyncer:
         for line in r.text.splitlines():
             parts = line.split(None, 1)
             if len(parts) == 2:
-                # Normaliza o caminho do arquivo removendo './' e padronizando barras
                 clean_path = parts[1].strip().lstrip("./").replace("\\", "/")
                 sha_data.append((parts[0].strip(), clean_path))
 
-        self.db.clear_and_populate_files("sha1sums", sha_data)
+        self.db.clear_and_populate_hashes(sha_data)
 
     def download_file(self, remote_path):
         """Baixa o arquivo, cria estrutura local e valida integridade."""

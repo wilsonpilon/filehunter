@@ -1,4 +1,5 @@
 import customtkinter as ctk
+from tkinter import ttk  # Para o Treeview
 import re
 import os
 import subprocess
@@ -9,88 +10,151 @@ from tkinter import messagebox
 class AllFilesWindow(ctk.CTkToplevel):
     def __init__(self, parent, db, syncer):
         super().__init__(parent)
-        self.title("FileHunter - Gerenciador de Arquivos")
-        self.geometry("1100x750")
+        self.title("FileHunter - Gerenciador de Arquivos (Modo Explorer)")
+        self.geometry("1200x800")
         self.db = db
         self.syncer = syncer
 
-        # Dados e Controle
-        self.all_data = self.db.get_all_files()
-        self.filtered_data = list(self.all_data)
+        # Estado
+        self.selected_category_id = None
+        self.all_data = []  # Cache de arquivos da categoria atual
+        self.filtered_data = []
         self.sort_asc = True
         self.current_page = 0
         self.items_per_page = 50
 
-        self.attributes("-topmost", True)
         self.setup_ui()
-        self.refresh_list()
+        self.load_root_categories()
+        self.apply_search()  # Carrega inicial
 
     def setup_ui(self):
-        # Barra Superior de Comandos
-        cmd_frame = ctk.CTkFrame(self)
-        cmd_frame.pack(fill="x", padx=10, pady=(10, 5))
+        # Barra Superior (Busca)
+        top_frame = ctk.CTkFrame(self)
+        top_frame.pack(side="top", fill="x", padx=10, pady=10)
 
-        ctk.CTkButton(cmd_frame, text="⬅ Voltar", width=100, fg_color="gray",
-                      command=self.destroy).pack(side="left", padx=5)
-
-        self.search_entry = ctk.CTkEntry(cmd_frame, placeholder_text="Busca Regex (ex: .*msx2.*)")
+        self.search_entry = ctk.CTkEntry(top_frame, placeholder_text="Filtrar nesta pasta (Regex)...")
         self.search_entry.pack(side="left", fill="x", expand=True, padx=5)
+        self.search_entry.bind("<Return>", lambda e: self.apply_search())
 
-        ctk.CTkButton(cmd_frame, text="Limpar", width=80, fg_color="#A13333",
-                      command=self.clear_search).pack(side="left", padx=5)
+        ctk.CTkButton(top_frame, text="Buscar", width=80, command=self.apply_search).pack(side="left", padx=2)
+        ctk.CTkButton(top_frame, text="Limpar", width=80, fg_color="#A13333", command=self.clear_search).pack(
+            side="left", padx=2)
 
-        ctk.CTkButton(cmd_frame, text="Buscar", width=100,
-                      command=self.apply_search).pack(side="left", padx=5)
+        # Container Principal (Split)
+        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        self.main_container.pack(fill="both", expand=True, padx=10, pady=0)
 
-        # Barra de Filtros/Ordem
-        filter_frame = ctk.CTkFrame(self, fg_color="transparent")
-        filter_frame.pack(fill="x", padx=10, pady=5)
+        # Painel Esquerdo (Árvore)
+        self.left_panel = ctk.CTkFrame(self.main_container, width=300)
+        self.left_panel.pack(side="left", fill="y", padx=(0, 5))
 
-        ctk.CTkButton(filter_frame, text="Ordenar A-Z / Z-A", width=150,
-                      command=self.toggle_sort).pack(side="right", padx=5)
+        ctk.CTkLabel(self.left_panel, text="Diretórios", font=("Arial", 14, "bold")).pack(pady=5)
 
-        # Container de Paginação (Inferior)
-        self.pagination_frame = ctk.CTkFrame(self)
-        self.pagination_frame.pack(side="bottom", fill="x", padx=10, pady=10)
+        # Treeview do Tkinter (estilizado para parecer Dark Mode se necessário)
+        style = ttk.Style()
+        style.configure("Treeview", rowheight=25)
 
-        self.btn_prev = ctk.CTkButton(self.pagination_frame, text="<< Anterior", command=self.prev_page)
-        self.btn_prev.pack(side="left", padx=20)
+        self.tree = ttk.Treeview(self.left_panel, show="tree")
+        self.tree.pack(fill="both", expand=True, padx=5, pady=5)
+        self.tree.bind("<<TreeviewOpen>>", self.on_tree_expand)
+        self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+
+        # Painel Direito (Arquivos)
+        self.right_panel = ctk.CTkFrame(self.main_container)
+        self.right_panel.pack(side="right", fill="both", expand=True)
+
+        # Paginação e Listagem dentro do painel direito
+        self.pagination_frame = ctk.CTkFrame(self.right_panel)
+        self.pagination_frame.pack(side="bottom", fill="x", padx=5, pady=5)
+
+        self.btn_prev = ctk.CTkButton(self.pagination_frame, text="<<", width=40, command=self.prev_page)
+        self.btn_prev.pack(side="left", padx=5)
 
         self.page_label = ctk.CTkLabel(self.pagination_frame, text="Página 1")
         self.page_label.pack(side="left", expand=True)
 
-        self.btn_next = ctk.CTkButton(self.pagination_frame, text="Próximo >>", command=self.next_page)
-        self.btn_next.pack(side="right", padx=20)
+        self.btn_next = ctk.CTkButton(self.pagination_frame, text=">>", width=40, command=self.next_page)
+        self.btn_next.pack(side="right", padx=5)
 
-        # Container de Listagem
-        self.scroll_frame = ctk.CTkScrollableFrame(self)
-        self.scroll_frame.pack(fill="both", expand=True, padx=10, pady=0)
+        self.scroll_frame = ctk.CTkScrollableFrame(self.right_panel)
+        self.scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+    def load_root_categories(self):
+        roots = self.db.get_categories(None)
+        for cat_id, name in roots:
+            node = self.tree.insert("", "end", text=name, iid=f"cat_{cat_id}", open=False)
+            # Insere um "dummy" para mostrar o ícone de expansão
+            self.tree.insert(node, "end", text="_dummy")
+
+    def on_tree_expand(self, event):
+        node_id = self.tree.focus()
+        if not node_id.startswith("cat_"): return
+
+        # Limpa o dummy
+        children = self.tree.get_children(node_id)
+        if len(children) == 1 and self.tree.item(children[0], "text") == "_dummy":
+            self.tree.delete(children[0])
+
+            cat_id = int(node_id.split("_")[1])
+            subcats = self.db.get_categories(cat_id)
+            for sid, sname in subcats:
+                snode = self.tree.insert(node_id, "end", text=sname, iid=f"cat_{sid}", open=False)
+                self.tree.insert(snode, "end", text="_dummy")
+
+    def on_tree_select(self, event):
+        selected = self.tree.selection()
+        if not selected or not selected[0].startswith("cat_"): return
+
+        node_id = selected[0]
+        cat_id = int(node_id.split("_")[1])
+
+        # 1. Expandir automaticamente se a pasta não tiver arquivos diretos
+        # mas tiver subpastas (força o carregamento dos filhos)
+        if not self.db.has_files_in_category(cat_id):
+            self.tree.item(node_id, open=True)
+            self.on_tree_expand(None)  # Dispara o carregamento dos filhos se necessário
+
+        # 2. Carregar arquivos de forma recursiva (Pasta + Subpastas)
+        self.selected_category_id = cat_id
+        self.current_page = 0
+        self.all_data = self.db.get_all_files(category_id=self.selected_category_id)
+        self.apply_search()
+
+    def refresh_list(self):
+        # ... (mesmo código anterior, mas com uma pequena melhoria no nome exibido) ...
+        for path in page_items:
+            row = ctk.CTkFrame(self.scroll_frame)
+            row.pack(fill="x", pady=1, padx=2)
+
+            # Se estamos listando recursivamente, pode ser útil mostrar um pedaço do caminho
+            # para o usuário saber de qual subpasta o arquivo veio
+            parts = path.split('/')
+            display_name = f"📂 {parts[-2]} > {parts[-1]}" if len(parts) > 1 else parts[-1]
+
+            ctk.CTkLabel(row, text=display_name, anchor="w").pack(side="left", fill="x", expand=True, padx=5)
+
+    def apply_search(self):
+        pattern = self.search_entry.get()
+        source = self.all_data if self.selected_category_id else self.db.get_all_files()
+
+        if not pattern:
+            self.filtered_data = list(source)
+        else:
+            try:
+                regex = re.compile(pattern, re.IGNORECASE)
+                self.filtered_data = [f for f in source if regex.search(f)]
+            except:
+                self.filtered_data = []
+
+        self.current_page = 0
+        self.refresh_list()
 
     def clear_search(self):
         self.search_entry.delete(0, "end")
         self.apply_search()
 
-    def apply_search(self):
-        pattern = self.search_entry.get()
-        self.current_page = 0
-        if not pattern:
-            self.filtered_data = list(self.all_data)
-        else:
-            try:
-                regex = re.compile(pattern, re.IGNORECASE)
-                self.filtered_data = [f for f in self.all_data if regex.search(f)]
-            except Exception as e:
-                messagebox.showerror("Erro Regex", f"Expressão inválida: {e}")
-                return
-        self.refresh_list()
-
-    def toggle_sort(self):
-        self.sort_asc = not self.sort_asc
-        self.filtered_data.sort(reverse=not self.sort_asc)
-        self.current_page = 0
-        self.refresh_list()
-
     def refresh_list(self):
+        # Limpa widgets anteriores
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
 
@@ -99,31 +163,24 @@ class AllFilesWindow(ctk.CTkToplevel):
         page_items = self.filtered_data[start:end]
 
         total_pages = max(1, (len(self.filtered_data) + self.items_per_page - 1) // self.items_per_page)
-        self.page_label.configure(
-            text=f"Página {self.current_page + 1} de {total_pages} ({len(self.filtered_data)} itens)")
+        self.page_label.configure(text=f"Pag {self.current_page + 1}/{total_pages} ({len(self.filtered_data)} arq)")
 
         for path in page_items:
             row = ctk.CTkFrame(self.scroll_frame)
-            row.pack(fill="x", pady=2, padx=5)
+            row.pack(fill="x", pady=1, padx=2)
 
-            ctk.CTkLabel(row, text=path, anchor="w").pack(side="left", fill="x", expand=True, padx=10)
+            # Mostra apenas o nome do arquivo na lista para ficar mais limpo
+            filename = path.split('/')[-1]
+            ctk.CTkLabel(row, text=filename, anchor="w").pack(side="left", fill="x", expand=True, padx=5)
 
-            # Verifica se o arquivo já existe localmente
             local_path = os.path.join("downloads", path.replace("/", os.sep))
-
             if os.path.exists(local_path):
-                btn_text = "Executar"
-                btn_color = "#2E7D32"  # Verde escuro
-                btn_cmd = lambda p=local_path: self.execute_file(p)
+                btn = ctk.CTkButton(row, text="Exec", width=60, fg_color="#2E7D32",
+                                    command=lambda p=local_path: self.execute_file(p))
             else:
-                btn_text = "Download"
-                btn_color = None  # Default
-                btn_cmd = lambda p=path: self.handle_download(p)
-
-            btn = ctk.CTkButton(row, text=btn_text, width=100, fg_color=btn_color, command=btn_cmd)
-            btn.pack(side="right", padx=10, pady=5)
-
-        self.scroll_frame._parent_canvas.yview_moveto(0)
+                btn = ctk.CTkButton(row, text="Baixar", width=60,
+                                    command=lambda p=path: self.handle_download(p))
+            btn.pack(side="right", padx=5)
 
     def handle_download(self, path):
         status = self.syncer.download_file(path)

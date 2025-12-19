@@ -14,25 +14,119 @@ class DatabaseManager:
         with self.get_connection() as conn:
             # Tabela de Configuração
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS config
-                (id INTEGER PRIMARY KEY CHECK (id = 1),
-                default_dir TEXT, appearance_mode TEXT, color_theme TEXT,
-                last_update TEXT)
-            """)
-            # Tabelas de dados
-            conn.execute("CREATE TABLE IF NOT EXISTS allfiles (filepath TEXT)")
+                         CREATE TABLE IF NOT EXISTS config
+                         (
+                             id
+                             INTEGER
+                             PRIMARY
+                             KEY
+                             CHECK
+                         (
+                             id =
+                             1
+                         ),
+                             default_dir TEXT, appearance_mode TEXT, color_theme TEXT,
+                             last_update TEXT)
+                         """)
+
+            # Nova Tabela de Categorias (Diretórios)
+            conn.execute("""
+                         CREATE TABLE IF NOT EXISTS categories
+                         (
+                             id
+                             INTEGER
+                             PRIMARY
+                             KEY
+                             AUTOINCREMENT,
+                             name
+                             TEXT
+                             NOT
+                             NULL,
+                             parent_id
+                             INTEGER,
+                             FOREIGN
+                             KEY
+                         (
+                             parent_id
+                         ) REFERENCES categories
+                         (
+                             id
+                         )
+                             )
+                         """)
+
+            # Tabelas de dados atualizada
+            conn.execute("""
+                         CREATE TABLE IF NOT EXISTS allfiles
+                         (
+                             id
+                             INTEGER
+                             PRIMARY
+                             KEY
+                             AUTOINCREMENT,
+                             filepath
+                             TEXT,
+                             filename
+                             TEXT,
+                             category_id
+                             INTEGER,
+                             FOREIGN
+                             KEY
+                         (
+                             category_id
+                         ) REFERENCES categories
+                         (
+                             id
+                         )
+                             )
+                         """)
             conn.execute("CREATE TABLE IF NOT EXISTS sha1sums (hash TEXT, filepath TEXT)")
             conn.commit()
 
-    def clear_and_populate_files(self, table_name, data_list):
-        """Limpa e insere dados em massa para performance."""
+    def clear_and_populate_files(self, data_list):
+        """Limpa e insere arquivos criando a árvore de categorias."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(f"DELETE FROM {table_name}")
-            if table_name == "allfiles":
-                cursor.executemany("INSERT INTO allfiles (filepath) VALUES (?)", [(x,) for x in data_list])
-            else:
-                cursor.executemany("INSERT INTO sha1sums (hash, filepath) VALUES (?, ?)", data_list)
+            cursor.execute("DELETE FROM allfiles")
+            cursor.execute("DELETE FROM categories")
+            cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('allfiles', 'categories')")
+
+            category_cache = {"": None}  # Cache de categorias { "caminho": id }
+
+            for filepath in data_list:
+                # Normaliza para usar barras invertidas para o processamento de diretórios
+                normalized_path = filepath.replace('/', '\\')
+                parts = normalized_path.split('\\')
+                filename = parts[-1]
+                directories = parts[:-1]
+
+                current_parent_id = None
+                full_path_acc = ""
+
+                for dir_name in directories:
+                    full_path_acc = os.path.join(full_path_acc, dir_name) if full_path_acc else dir_name
+
+                    if full_path_acc not in category_cache:
+                        cursor.execute(
+                            "INSERT INTO categories (name, parent_id) VALUES (?, ?)",
+                            (dir_name, current_parent_id)
+                        )
+                        category_cache[full_path_acc] = cursor.lastrowid
+
+                    current_parent_id = category_cache[full_path_acc]
+
+                cursor.execute(
+                    "INSERT INTO allfiles (filepath, filename, category_id) VALUES (?, ?, ?)",
+                    (filepath, filename, current_parent_id)
+                )
+            conn.commit()
+
+    def clear_and_populate_hashes(self, hash_data):
+        """Limpa e insere os hashes SHA1."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM sha1sums")
+            cursor.executemany("INSERT INTO sha1sums (hash, filepath) VALUES (?, ?)", hash_data)
             conn.commit()
 
     def update_last_sync(self, date_str):
@@ -60,11 +154,28 @@ class DatabaseManager:
             cursor.execute("SELECT count(*) FROM allfiles")
             return cursor.fetchone()[0] == 0
 
-    def get_all_files(self):
+    def get_all_files(self, category_id=None, search_pattern=None):
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT filepath FROM allfiles")
+            query = "SELECT filepath FROM allfiles WHERE 1=1"
+            params = []
+
+            if category_id:
+                query += " AND category_id = ?"
+                params.append(category_id)
+
+            cursor.execute(query, params)
             return [row[0] for row in cursor.fetchall()]
+
+    def get_categories(self, parent_id=None):
+        """Busca subcategorias de um pai específico."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if parent_id is None:
+                cursor.execute("SELECT id, name FROM categories WHERE parent_id IS NULL")
+            else:
+                cursor.execute("SELECT id, name FROM categories WHERE parent_id = ?", (parent_id,))
+            return cursor.fetchall()
 
     def get_sha1_for_file(self, filepath):
         with self.get_connection() as conn:
@@ -77,3 +188,33 @@ class DatabaseManager:
         with self.get_connection() as conn:
             conn.execute("INSERT INTO sha1sums (hash, filepath) VALUES (?, ?)", (sha1_hash, filepath))
             conn.commit()
+
+    def get_all_files(self, category_id=None):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if category_id:
+                # Busca recursiva: arquivos da categoria e de todas as subcategorias
+                query = """
+                        WITH RECURSIVE subcats(id) AS (SELECT ? \
+                                                       UNION ALL \
+                                                       SELECT c.id \
+                                                       FROM categories c \
+                                                                JOIN subcats s ON c.parent_id = s.id)
+                        SELECT filepath \
+                        FROM allfiles \
+                        WHERE category_id IN (SELECT id FROM subcats) \
+                        """
+                cursor.execute(query, (category_id,))
+            else:
+                cursor.execute("SELECT filepath FROM allfiles")
+
+            return [row[0] for row in cursor.fetchall()]
+
+    def has_files_in_category(self, category_id):
+        """Verifica se existem arquivos especificamente nesta pasta (sem recursividade)."""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM allfiles WHERE category_id = ? LIMIT 1", (category_id,))
+            return cursor.fetchone() is not None
+
+

@@ -12,18 +12,22 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
 
 ## ✨ Funcionalidades Atuais
 
+- **Navegação Estilo Explorer Clássico**: Interface inspirada no File Manager do Windows 3.1 com painel de diretórios à esquerda e listagem de arquivos à direita.
+- **Categorização Inteligente**: Processamento automático do `ALLFILES.TXT` para criação de uma estrutura relacional de categorias e subcategorias aninhadas.
+- **Busca Recursiva por Pastas**: Ao selecionar um diretório, o sistema exibe automaticamente todos os arquivos contidos nele e em seus subdiretórios (Aggregation View).
+- **Expansão Automática de Árvore**: Navegação fluida que abre subpastas automaticamente quando o diretório pai atua apenas como contêiner.
 - **Splash Screen Animada**: Inicialização elegante com efeito de fade-out baseada em imagem customizada.
-- **Sincronização Inteligente**: Compara a data da última atualização no servidor e limpa prefixos (como `./`) para garantir compatibilidade perfeita entre as listas.
+- **Sincronização Inteligente**: Compara a data da última atualização no servidor e limpa prefixos para garantir compatibilidade perfeita.
 - **Gerenciador de Arquivos Paginado**: Navegação ultra rápida em milhares de registros sem travamentos da interface.
-- **Busca por Expressões Regulares (Regex)**: Filtragem poderosa de arquivos por padrões complexos ou nomes simples.
-- **Sistema de Downloads Inteligente**:
-  - Reconstrói a estrutura de diretórios original do File-Hunter localmente no subdiretório `/downloads`.
-  - Verifica automaticamente o **SHA1** após o download para garantir que o arquivo não está corrompido.
-  - Altera dinamicamente o botão para **Executar** caso o arquivo já exista localmente.
-- **Execução Direta**: Abre arquivos baixados diretamente pelo programa padrão do sistema operacional.
-- **Interface Moderna**: Construído com `CustomTkinter` com suporte a temas e modos Dark/Light.
+- **Busca por Expressões Regulares (Regex)**: Filtragem poderosa que funciona em conjunto com a seleção de categorias.
+- **Sistema de Downloads com Verificação**:
+  - Reconstrói a estrutura original localmente no diretório `/downloads`.
+  - Verifica automaticamente o **SHA1** pós-download.
+  - Botão dinâmico para **Executar** caso o arquivo já exista localmente.
+- **Interface Moderna**: Construído com `CustomTkinter` com suporte total a temas Dark/Light.
 
 ## 🚀 Como Usar
+// ... existing code ...
 
 ### Pré-requisitos
 - Python 3.10 ou superior.
