@@ -1,71 +1,66 @@
 import customtkinter as ctk
-import threading
 from database.manager import DatabaseManager
 from database.syncer import FileHunterSyncer
 from gui.settings_window import SettingsWindow
-
+from gui.file_list_window import AllFilesWindow
+from tkinter import messagebox
 
 class FileHunterApp(ctk.CTk):
     def __init__(self):
-        self.db_manager = DatabaseManager()
-        config = self.db_manager.get_config()
+        super().__init__()
+        self.title("FileHunter MSX Manager")
+        self.geometry("600x400")
+
+        self.db = DatabaseManager()
+        self.syncer = FileHunterSyncer(self.db, self.update_status)
+
+        self.setup_ui()
+        self.apply_initial_config()
+
+    def setup_ui(self):
+        self.label = ctk.CTkLabel(self, text="FileHunter MSX Manager", font=("Arial", 24, "bold"))
+        self.label.pack(pady=20)
+
+        # Botão AllFiles
+        self.btn_all = ctk.CTkButton(self, text="AllFiles (Gerenciar)", command=self.open_all_files)
+        self.btn_all.pack(pady=10)
+
+        # Botão Sync
+        self.btn_sync = ctk.CTkButton(self, text="Sincronizar Banco de Dados", command=self.syncer.check_for_updates)
+        self.btn_sync.pack(pady=10)
+
+        # Botão Settings
+        self.btn_settings = ctk.CTkButton(self, text="Configurações", command=self.open_settings)
+        self.btn_settings.pack(pady=10)
+
+        # Botão Sair (Novo)
+        self.btn_exit = ctk.CTkButton(self, text="Sair do Programa", fg_color="#A13333", hover_color="#7A2626",
+                                      command=self.destroy)
+        self.btn_exit.pack(pady=10)
+
+        # Console de Status
+        self.status_box = ctk.CTkTextbox(self, height=120)
+
+    def apply_initial_config(self):
+        config = self.db.get_config()
         if config:
             ctk.set_appearance_mode(config[1])
             ctk.set_default_color_theme(config[2])
 
-        super().__init__()
-        self.title("FileHunter MSX Frontend")
-        self.geometry("700x500")
-
-        # UI Elements
-        self.label = ctk.CTkLabel(self, text="FileHunter MSX Manager", font=("Arial", 22, "bold"))
-        self.label.pack(pady=10)
-
-        # Área de Log/Status
-        self.status_box = ctk.CTkTextbox(self, width=600, height=200, font=("Consolas", 12))
-        self.status_box.pack(pady=10, padx=20)
-        self.status_box.configure(state="disabled")
-
-        self.btn_sync = ctk.CTkButton(self, text="Sincronizar Banco", command=self.start_sync_thread)
-        self.btn_sync.pack(pady=5)
-
-        self.btn_settings = ctk.CTkButton(self, text="Configurações", command=self.open_settings)
-        self.btn_settings.pack(pady=5)
-
-        self.btn_exit = ctk.CTkButton(self, text="Sair", fg_color="#880000", command=self.quit)
-        self.btn_exit.pack(pady=5)
-
-        self.after(500, self.auto_check)
-
-    def log_status(self, message):
-        """Atualiza a caixa de texto de forma segura para threads"""
-        timestamp = threading.current_thread().name  # Apenas para exemplo
-        self.status_box.configure(state="normal")
-        self.status_box.insert("end", f"> {message}\n")
+    def update_status(self, message):
+        self.status_box.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
         self.status_box.see("end")
-        self.status_box.configure(state="disabled")
-
-    def start_sync_thread(self):
-        self.btn_sync.configure(state="disabled")
-        syncer = FileHunterSyncer(self.db_manager, self.log_status)
-        thread = threading.Thread(target=lambda: self.run_sync(syncer), daemon=True)
-        thread.start()
-
-    def run_sync(self, syncer):
-        syncer.check_for_updates()
-        self.btn_sync.configure(state="normal")
-
-    def auto_check(self):
-        config = self.db_manager.get_config()
-        if not config:
-            self.open_settings()
-        else:
-            self.start_sync_thread()
 
     def open_settings(self):
-        SettingsWindow(self, self.db_manager, lambda: self.log_status("Configurações salvas."))
+        SettingsWindow(self, self.db, self.apply_initial_config)
 
+    def open_all_files(self):
+        if self.db.is_database_empty():
+            messagebox.showwarning("Aviso", "O banco está vazio. Sincronize primeiro!")
+            return
+        AllFilesWindow(self, self.db, self.syncer)
 
+from datetime import datetime
 if __name__ == "__main__":
     app = FileHunterApp()
     app.mainloop()

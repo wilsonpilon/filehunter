@@ -1,12 +1,14 @@
 import requests
+import os
+import hashlib
 from datetime import datetime
-
 
 class FileHunterSyncer:
     BASE_URL = "https://download.file-hunter.com/"
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
+
     def __init__(self, db_manager, status_callback):
         self.db = db_manager
         self.log = status_callback
@@ -16,46 +18,75 @@ class FileHunterSyncer:
         try:
             response = requests.get(f"{self.BASE_URL}allfiles.txt", headers=self.HEADERS, stream=True)
             remote_date = response.headers.get('Last-Modified')
-
-            # Fechamos a conexão do stream pois só queríamos o header por enquanto
             response.close()
 
             config = self.db.get_config()
-            # Agora config[3] contém o last_update corretamente
             last_update = config[3] if config and len(config) > 3 else None
-
-            # Verificamos se as tabelas estão vazias
             db_empty = self.db.is_database_empty()
 
             if db_empty or last_update != remote_date:
-                motivo = "Banco vazio" if db_empty else "Nova data detectada"
-                self.log(f"Sincronização necessária: {motivo}")
-                self.log(f"Data remota: {remote_date}")
-
+                self.log(f"Sincronização necessária: {'Banco vazio' if db_empty else 'Nova data detectada'}")
                 self.sync_files()
                 self.db.update_last_sync(remote_date)
                 self.log("Sincronização concluída com sucesso!")
             else:
-                self.log("O banco de dados já está atualizado (Data e Conteúdo ok).")
+                self.log("O banco de dados já está atualizado.")
         except Exception as e:
             self.log(f"Erro na sincronização: {str(e)}")
 
     def sync_files(self):
-        # 1. Processando allfiles.txt
-        self.log("Baixando allfiles.txt...")
+        # AllFiles
+        self.log("Baixando listagem de arquivos...")
         r = requests.get(f"{self.BASE_URL}allfiles.txt", headers=self.HEADERS)
-        lines = [l.strip() for l in r.text.splitlines() if l.strip()]
-        self.log(f"Populando {len(lines)} registros em allfiles...")
+        # Normaliza removendo './' se existir
+        lines = [l.strip().lstrip("./").replace("\\", "/") for l in r.text.splitlines() if l.strip()]
         self.db.clear_and_populate_files("allfiles", lines)
 
-        # 2. Processando sha1sums.txt
-        self.log("Baixando sha1sums.txt...")
+        # SHA1
+        self.log("Baixando hashes SHA1...")
         r = requests.get(f"{self.BASE_URL}sha1sums.txt", headers=self.HEADERS)
         sha_data = []
         for line in r.text.splitlines():
-            parts = line.split(None, 1)  # Divide no primeiro espaço/tab
+            parts = line.split(None, 1)
             if len(parts) == 2:
-                sha_data.append((parts[0].strip(), parts[1].strip()))
+                # Normaliza o caminho do arquivo removendo './' e padronizando barras
+                clean_path = parts[1].strip().lstrip("./").replace("\\", "/")
+                sha_data.append((parts[0].strip(), clean_path))
 
-        self.log(f"Populando {len(sha_data)} hashes SHA1...")
         self.db.clear_and_populate_files("sha1sums", sha_data)
+
+    def download_file(self, remote_path):
+        """Baixa o arquivo, cria estrutura local e valida integridade."""
+        # Garante que o remote_path usado para busca no banco esteja limpo
+        clean_remote_path = remote_path.lstrip("./").replace("\\", "/")
+
+        local_dir = "downloads"
+        full_local_path = os.path.join(local_dir, clean_remote_path.replace("/", os.sep))
+        os.makedirs(os.path.dirname(full_local_path), exist_ok=True)
+
+        url = f"{self.BASE_URL}{remote_path}"
+        try:
+            r = requests.get(url, headers=self.HEADERS, timeout=30)
+            r.raise_for_status()
+
+            with open(full_local_path, "wb") as f:
+                f.write(r.content)
+
+            sha1_local = hashlib.sha1(r.content).hexdigest()
+            # Busca usando o caminho limpo
+            sha1_remoto = self.db.get_sha1_for_file(clean_remote_path)
+
+            if sha1_remoto:
+                if sha1_local.lower() == sha1_remoto.lower():
+                    self.log(f"✅ OK: {remote_path}")
+                    return "success"
+                else:
+                    self.log(f"❌ ERRO HASH: {remote_path}")
+                    return "danger"
+            else:
+                self.db.add_sha1(remote_path, sha1_local)
+                self.log(f"ℹ️ NOVO HASH: {remote_path}")
+                return "warning"
+        except Exception as e:
+            self.log(f"❌ ERRO DOWNLOAD: {str(e)}")
+            return "error"

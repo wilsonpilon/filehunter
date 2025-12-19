@@ -14,29 +14,18 @@ class DatabaseManager:
         with self.get_connection() as conn:
             # Tabela de Configuração
             conn.execute("""
-                         CREATE TABLE IF NOT EXISTS config
-                         (
-                             id
-                             INTEGER
-                             PRIMARY
-                             KEY
-                             CHECK
-                         (
-                             id =
-                             1
-                         ),
-                             default_dir TEXT, appearance_mode TEXT, color_theme TEXT,
-                             last_update TEXT
-                             )
-                         """)
-            # Tabela para AllFiles (Caminho do arquivo)
+                CREATE TABLE IF NOT EXISTS config
+                (id INTEGER PRIMARY KEY CHECK (id = 1),
+                default_dir TEXT, appearance_mode TEXT, color_theme TEXT,
+                last_update TEXT)
+            """)
+            # Tabelas de dados
             conn.execute("CREATE TABLE IF NOT EXISTS allfiles (filepath TEXT)")
-            # Tabela para SHA1 (Hash e Caminho)
             conn.execute("CREATE TABLE IF NOT EXISTS sha1sums (hash TEXT, filepath TEXT)")
             conn.commit()
 
     def clear_and_populate_files(self, table_name, data_list):
-        """Limpa a tabela e insere novos dados em massa (performance)"""
+        """Limpa e insere dados em massa para performance."""
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(f"DELETE FROM {table_name}")
@@ -54,17 +43,8 @@ class DatabaseManager:
     def get_config(self):
         with self.get_connection() as conn:
             cursor = conn.cursor()
-            # Adicionado last_update ao SELECT
             cursor.execute("SELECT default_dir, appearance_mode, color_theme, last_update FROM config WHERE id = 1")
             return cursor.fetchone()
-
-    def is_database_empty(self):
-        """Verifica se as tabelas de dados estão vazias"""
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT count(*) FROM allfiles")
-            count = cursor.fetchone()[0]
-            return count == 0
 
     def save_config(self, default_dir, appearance, color):
         with self.get_connection() as conn:
@@ -72,4 +52,28 @@ class DatabaseManager:
                 INSERT OR REPLACE INTO config (id, default_dir, appearance_mode, color_theme)
                 VALUES (1, ?, ?, ?)
             """, (default_dir, appearance, color))
+            conn.commit()
+
+    def is_database_empty(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT count(*) FROM allfiles")
+            return cursor.fetchone()[0] == 0
+
+    def get_all_files(self):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT filepath FROM allfiles")
+            return [row[0] for row in cursor.fetchall()]
+
+    def get_sha1_for_file(self, filepath):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT hash FROM sha1sums WHERE filepath = ?", (filepath,))
+            result = cursor.fetchone()
+            return result[0] if result else None
+
+    def add_sha1(self, filepath, sha1_hash):
+        with self.get_connection() as conn:
+            conn.execute("INSERT INTO sha1sums (hash, filepath) VALUES (?, ?)", (sha1_hash, filepath))
             conn.commit()
