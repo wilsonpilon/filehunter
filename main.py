@@ -1,15 +1,74 @@
 import customtkinter as ctk
+from PIL import Image
+import os
 from database.manager import DatabaseManager
 from database.syncer import FileHunterSyncer
 from gui.settings_window import SettingsWindow
 from gui.file_list_window import AllFilesWindow
 from tkinter import messagebox
+from datetime import datetime
+import time
+
+
+class SplashScreen(ctk.CTkToplevel):
+    def __init__(self):
+        super().__init__()
+
+        # Configuração da Imagem
+        img_path = os.path.join(os.path.dirname(__file__), "splashscreen.png")
+        try:
+            pil_img = Image.open(img_path)
+            # Reduz as dimensões para 1/2 (metade)
+            img_width = int(pil_img.size[0] * 0.5)
+            img_height = int(pil_img.size[1] * 0.5)
+        except Exception as e:
+            print(f"Erro ao carregar splash: {e}")
+            img_width, img_height = 400, 300  # Fallback
+            pil_img = None
+
+        self.overrideredirect(True)
+
+        # Centralizar com base no novo tamanho reduzido
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width // 2) - (img_width // 2)
+        y = (screen_height // 2) - (img_height // 2)
+        self.geometry(f"{img_width}x{img_height}+{x}+{y}")
+
+        # Exibe a imagem redimensionada
+        if pil_img:
+            # O CTkImage aceita o tamanho que deve ser renderizado
+            self.splash_img = ctk.CTkImage(light_image=pil_img,
+                                           dark_image=pil_img,
+                                           size=(img_width, img_height))
+            self.label = ctk.CTkLabel(self, image=self.splash_img, text="")
+            self.label.pack()
+        else:
+            self.label = ctk.CTkLabel(self, text="FileHunter MSX\n(Imagem não encontrada)", font=("Arial", 20))
+            self.label.pack(expand=True)
+
+        self.attributes("-alpha", 1.0)
+
+    def fade_out(self):
+        alpha = self.attributes("-alpha")
+        if alpha > 0:
+            alpha -= 0.1
+            self.attributes("-alpha", alpha)
+            self.after(30, self.fade_out)
+        else:
+            self.destroy()
+
 
 class FileHunterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
+        self.withdraw()  # Esconde a tela principal inicialmente
+
+        # Inicia Splash
+        self.splash = SplashScreen()
+
         self.title("FileHunter MSX Manager")
-        self.geometry("600x400")
+        self.geometry("600x450")
 
         self.db = DatabaseManager()
         self.syncer = FileHunterSyncer(self.db, self.update_status)
@@ -17,7 +76,15 @@ class FileHunterApp(ctk.CTk):
         self.setup_ui()
         self.apply_initial_config()
 
+        # Agenda a transição: Espera 3 seg e inicia fade
+        self.after(3000, self.show_main_window)
+
+    def show_main_window(self):
+        self.deiconify()  # Mostra a tela principal
+        self.splash.fade_out()
+
     def setup_ui(self):
+        # ... existing code ...
         self.label = ctk.CTkLabel(self, text="FileHunter MSX Manager", font=("Arial", 24, "bold"))
         self.label.pack(pady=20)
 
@@ -33,13 +100,15 @@ class FileHunterApp(ctk.CTk):
         self.btn_settings = ctk.CTkButton(self, text="Configurações", command=self.open_settings)
         self.btn_settings.pack(pady=10)
 
-        # Botão Sair (Novo)
+        # Botão Sair
         self.btn_exit = ctk.CTkButton(self, text="Sair do Programa", fg_color="#A13333", hover_color="#7A2626",
                                       command=self.destroy)
         self.btn_exit.pack(pady=10)
 
         # Console de Status
         self.status_box = ctk.CTkTextbox(self, height=120)
+        self.status_box.pack(padx=20, pady=20, fill="both", expand=True)
+        # ... existing code ...
 
     def apply_initial_config(self):
         config = self.db.get_config()
@@ -60,7 +129,7 @@ class FileHunterApp(ctk.CTk):
             return
         AllFilesWindow(self, self.db, self.syncer)
 
-from datetime import datetime
+
 if __name__ == "__main__":
     app = FileHunterApp()
     app.mainloop()
