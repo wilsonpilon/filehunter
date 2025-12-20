@@ -84,31 +84,9 @@ class FileHunterApp(ctk.CTk):
         self.splash.fade_out()
 
     def setup_ui(self):
-        # ... existing code ...
-        self.label = ctk.CTkLabel(self, text="FileHunter MSX Manager", font=("Arial", 24, "bold"))
-        self.label.pack(pady=20)
-
-        # Botão AllFiles
-        self.btn_all = ctk.CTkButton(self, text="AllFiles (Gerenciar)", command=self.open_all_files)
-        self.btn_all.pack(pady=10)
-
-        # Botão Sync
-        self.btn_sync = ctk.CTkButton(self, text="Sincronizar Banco de Dados", command=self.syncer.check_for_updates)
-        self.btn_sync.pack(pady=10)
-
-        # Botão Settings
-        self.btn_settings = ctk.CTkButton(self, text="Configurações", command=self.open_settings)
-        self.btn_settings.pack(pady=10)
-
-        # Botão Sair
-        self.btn_exit = ctk.CTkButton(self, text="Sair do Programa", fg_color="#A13333", hover_color="#7A2626",
-                                      command=self.destroy)
-        self.btn_exit.pack(pady=10)
-
-        # Console de Status
-        self.status_box = ctk.CTkTextbox(self, height=120)
-        self.status_box.pack(padx=20, pady=20, fill="both", expand=True)
-        # ... existing code ...
+        # Agora delegamos a construção da UI para a lógica do AllFiles
+        # mas mantemos as referências necessárias na classe root
+        self.all_files_ui = AllFilesWindow(self, self.db, self.syncer, embed=True)
 
     def apply_initial_config(self):
         config = self.db.get_config()
@@ -117,8 +95,9 @@ class FileHunterApp(ctk.CTk):
             ctk.set_default_color_theme(config[2])
 
     def update_status(self, message):
-        self.status_box.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
-        self.status_box.see("end")
+        # Redireciona para a caixa de status que agora vive dentro da AllFilesWindow (embed)
+        if hasattr(self, 'all_files_ui'):
+            self.all_files_ui.update_status(message)
 
     def open_settings(self):
         SettingsWindow(self, self.db, self.apply_initial_config)

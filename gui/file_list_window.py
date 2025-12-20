@@ -5,13 +5,20 @@ import os
 import subprocess
 import platform
 from tkinter import messagebox
+from datetime import datetime
 
 
 class AllFilesWindow(ctk.CTkToplevel):
-    def __init__(self, parent, db, syncer):
-        super().__init__(parent)
-        self.title("FileHunter - Gerenciador de Arquivos (Modo Explorer)")
-        self.geometry("1200x800")
+    def __init__(self, parent, db, syncer, embed=False):
+        if embed:
+            # Se embutido, não chamamos super().__init__(parent) como Toplevel
+            # mas usamos o parent (a tela principal) para desenhar
+            self.master = parent
+        else:
+            super().__init__(parent)
+            self.title("FileHunter - Gerenciador de Arquivos (Modo Explorer)")
+            self.geometry("1200x800")
+
         self.db = db
         self.syncer = syncer
 
@@ -23,14 +30,39 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.current_page = 0
         self.items_per_page = 50
 
-        self.setup_ui()
+        # Backup do callback original do syncer para restaurar ao fechar
+        self.original_status_callback = self.syncer.log
+        self.syncer.log = self.update_status
+
+        self.setup_ui(embed=embed)
         self.load_root_categories()
         self.apply_search()  # Carrega inicial
 
-    def setup_ui(self):
-        # Barra Superior (Busca)
-        top_frame = ctk.CTkFrame(self)
+        # Protocolo para fechar a janela corretamente
+        if not embed:
+            self.protocol("WM_DELETE_WINDOW", self.on_close)
+
+    def setup_ui(self, embed=False):
+        # Definimos onde os widgets serão desenhados
+        container = self.master if embed else self
+
+        if embed:
+            # Ajusta o tamanho da janela principal caso esteja embutido
+            self.master.geometry("1200x800")
+            self.master.title("FileHunter MSX Manager - Explorer")
+
+        # 1. Barra Superior (Busca)
+        top_frame = ctk.CTkFrame(container)
         top_frame.pack(side="top", fill="x", padx=10, pady=10)
+
+        ctk.CTkButton(top_frame, text="Sair", width=80, fg_color="#A13333", hover_color="#7A2626",
+                      command=self.master.destroy).pack(side="left", padx=5)
+
+        ctk.CTkButton(top_frame, text="Configurações", width=120,
+                      command=lambda: self.master.open_settings()).pack(side="left", padx=5)
+
+        ctk.CTkButton(top_frame, text="Sincronizar Banco", width=140, fg_color="#2E7D32", hover_color="#1B5E20",
+                      command=self.syncer.check_for_updates).pack(side="left", padx=5)
 
         self.search_entry = ctk.CTkEntry(top_frame, placeholder_text="Filtrar nesta pasta (Regex)...")
         self.search_entry.pack(side="left", fill="x", expand=True, padx=5)
@@ -40,30 +72,32 @@ class AllFilesWindow(ctk.CTkToplevel):
         ctk.CTkButton(top_frame, text="Limpar", width=80, fg_color="#A13333", command=self.clear_search).pack(
             side="left", padx=2)
 
-        # Container Principal (Split)
-        self.main_container = ctk.CTkFrame(self, fg_color="transparent")
+        # 2. Console de Status
+        self.status_box = ctk.CTkTextbox(container, height=100)
+        self.status_box.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
+
+        # 3. Container Principal (Split Central)
+        self.main_container = ctk.CTkFrame(container, fg_color="transparent")
         self.main_container.pack(fill="both", expand=True, padx=10, pady=0)
 
-        # Painel Esquerdo (Árvore)
+        # Painel Esquerdo (Árvore de Diretórios)
         self.left_panel = ctk.CTkFrame(self.main_container, width=300)
         self.left_panel.pack(side="left", fill="y", padx=(0, 5))
 
         ctk.CTkLabel(self.left_panel, text="Diretórios", font=("Arial", 14, "bold")).pack(pady=5)
 
-        # Treeview do Tkinter
         style = ttk.Style()
         style.configure("Treeview", rowheight=25)
-
         self.tree = ttk.Treeview(self.left_panel, show="tree")
         self.tree.pack(fill="both", expand=True, padx=5, pady=5)
         self.tree.bind("<<TreeviewOpen>>", self.on_tree_expand)
         self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
 
-        # Painel Direito (Arquivos)
+        # Painel Direito (Listagem de Arquivos)
         self.right_panel = ctk.CTkFrame(self.main_container)
         self.right_panel.pack(side="right", fill="both", expand=True)
 
-        # Paginação e Rodapé dentro do painel direito
+        # Paginação (Rodapé do painel direito)
         self.pagination_frame = ctk.CTkFrame(self.right_panel)
         self.pagination_frame.pack(side="bottom", fill="x", padx=5, pady=5)
 
@@ -73,7 +107,6 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.page_label = ctk.CTkLabel(self.pagination_frame, text="Página 1")
         self.page_label.pack(side="left", expand=True)
 
-        # Botão "Baixar Todos" - Inicialmente oculto
         self.btn_download_all = ctk.CTkButton(
             self.pagination_frame,
             text="Baixar Todos",
@@ -85,8 +118,25 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.btn_next = ctk.CTkButton(self.pagination_frame, text=">>", width=40, command=self.next_page)
         self.btn_next.pack(side="right", padx=5)
 
+        # Área de Scroll dos arquivos
         self.scroll_frame = ctk.CTkScrollableFrame(self.right_panel)
         self.scroll_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+    def update_status(self, message):
+        """Atualiza o console de status na interface"""
+        if hasattr(self, "status_box") and self.status_box.winfo_exists():
+            self.status_box.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
+            self.status_box.see("end")
+            self.update_idletasks()
+
+        # Opcional: mantém o log na tela inicial também
+        if self.original_status_callback:
+            self.original_status_callback(message)
+
+    def on_close(self):
+        """Restaura o callback original do syncer antes de fechar"""
+        self.syncer.log = self.original_status_callback
+        self.destroy()
 
     def load_root_categories(self):
         roots = self.db.get_categories(None)
@@ -101,7 +151,6 @@ class AllFilesWindow(ctk.CTkToplevel):
         children = self.tree.get_children(node_id)
         if len(children) == 1 and self.tree.item(children[0], "text") == "_dummy":
             self.tree.delete(children[0])
-
             cat_id = int(node_id.split("_")[1])
             subcats = self.db.get_categories(cat_id)
             for sid, sname in subcats:
@@ -114,15 +163,12 @@ class AllFilesWindow(ctk.CTkToplevel):
 
         node_id = selected[0]
         cat_id = int(node_id.split("_")[1])
-
-        # Verifica se é o último nível (sem subcategorias)
         has_subcats = len(self.db.get_categories(cat_id)) > 0
 
         if not self.db.has_files_in_category(cat_id):
             self.tree.item(node_id, open=True)
             self.on_tree_expand(None)
 
-        # Gerencia a visibilidade do botão "Baixar Todos"
         if not has_subcats:
             self.btn_download_all.pack(side="right", padx=10)
         else:
@@ -195,24 +241,21 @@ class AllFilesWindow(ctk.CTkToplevel):
         return False
 
     def download_all_current(self):
-        if not self.filtered_data:
-            return
+        if not self.filtered_data: return
 
         confirm = messagebox.askyesno(
             "Confirmar Download em Massa",
-            f"Deseja baixar todos os {len(self.filtered_data)} arquivos desta pasta?\n\n"
-            "O programa respeitará a estrutura original de diretórios."
+            f"Deseja baixar todos os {len(self.filtered_data)} arquivos desta pasta?"
         )
 
         if confirm:
             self.btn_download_all.configure(state="disabled", text="Baixando...")
             self.update_idletasks()
-
             for path in self.filtered_data:
                 local_path = os.path.join("downloads", path.replace("/", os.sep))
                 if not os.path.exists(local_path):
                     self.handle_download(path, silent=True)
-                    self.update_idletasks() # Mantém a UI responsiva durante o loop
+                    self.update_idletasks()
 
             self.btn_download_all.configure(state="normal", text="Baixar Todos")
             messagebox.showinfo("Finalizado", "Todos os downloads foram processados!")
