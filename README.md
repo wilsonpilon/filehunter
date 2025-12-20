@@ -8,7 +8,7 @@ O **FileHunter MSX Manager** é um frontend moderno em Python desenvolvido para 
 
 Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Images, etc), baixando as listagens oficiais (`allfiles.txt` e `sha1sums.txt`) e armazenando-as em um banco de dados local SQLite. Ele permite que usuários de MSX mantenham uma cópia local organizada e sempre atualizada da estrutura de arquivos do site, com verificação automática de integridade.
 
-![Interface do Aplicativo](images/application.png)
+![Interface do Aplicativo](images/application2.png)
 
 ## ✨ Funcionalidades Atuais
 
@@ -19,9 +19,10 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
 - **Splash Screen Animada**: Inicialização elegante com efeito de fade-out baseada em imagem customizada.
 - **Sincronização Inteligente**: Compara a data da última atualização no servidor e limpa prefixos para garantir compatibilidade perfeita.
 - **Gerenciador de Arquivos Paginado**: Navegação ultra rápida em milhares de registros sem travamentos da interface.
-- **Busca por Expressões Regulares (Regex)**: Filtragem poderosa que funciona em conjunto com a seleção de categorias.
-- **Sistema de Downloads com Verificação**:
-  - Reconstrói a estrutura original localmente no diretório `/downloads`.
+    - **Busca por Expressões Regulares (Regex)**: Filtragem poderosa que funciona em conjunto com a seleção de categorias.
+    - **Download em Massa Inteligente**: Botão "Baixar Todos" que aparece automaticamente ao atingir o último nível de diretório, permitindo baixar coleções completas respeitando a estrutura de pastas original.
+    - **Sistema de Downloads com Verificação**:
+      - Reconstrói a estrutura original localmente no diretório `/downloads`.
   - Verifica automaticamente o **SHA1** pós-download.
   - Botão dinâmico para **Executar** caso o arquivo já exista localmente.
 - **Interface Moderna**: Construído com `CustomTkinter` com suporte total a temas Dark/Light.

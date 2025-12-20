@@ -50,7 +50,7 @@ class AllFilesWindow(ctk.CTkToplevel):
 
         ctk.CTkLabel(self.left_panel, text="Diretórios", font=("Arial", 14, "bold")).pack(pady=5)
 
-        # Treeview do Tkinter (estilizado para parecer Dark Mode se necessário)
+        # Treeview do Tkinter
         style = ttk.Style()
         style.configure("Treeview", rowheight=25)
 
@@ -63,7 +63,7 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.right_panel = ctk.CTkFrame(self.main_container)
         self.right_panel.pack(side="right", fill="both", expand=True)
 
-        # Paginação e Listagem dentro do painel direito
+        # Paginação e Rodapé dentro do painel direito
         self.pagination_frame = ctk.CTkFrame(self.right_panel)
         self.pagination_frame.pack(side="bottom", fill="x", padx=5, pady=5)
 
@@ -72,6 +72,15 @@ class AllFilesWindow(ctk.CTkToplevel):
 
         self.page_label = ctk.CTkLabel(self.pagination_frame, text="Página 1")
         self.page_label.pack(side="left", expand=True)
+
+        # Botão "Baixar Todos" - Inicialmente oculto
+        self.btn_download_all = ctk.CTkButton(
+            self.pagination_frame,
+            text="Baixar Todos",
+            fg_color="#2E7D32",
+            hover_color="#1B5E20",
+            command=self.download_all_current
+        )
 
         self.btn_next = ctk.CTkButton(self.pagination_frame, text=">>", width=40, command=self.next_page)
         self.btn_next.pack(side="right", padx=5)
@@ -83,14 +92,12 @@ class AllFilesWindow(ctk.CTkToplevel):
         roots = self.db.get_categories(None)
         for cat_id, name in roots:
             node = self.tree.insert("", "end", text=name, iid=f"cat_{cat_id}", open=False)
-            # Insere um "dummy" para mostrar o ícone de expansão
             self.tree.insert(node, "end", text="_dummy")
 
     def on_tree_expand(self, event):
         node_id = self.tree.focus()
         if not node_id.startswith("cat_"): return
 
-        # Limpa o dummy
         children = self.tree.get_children(node_id)
         if len(children) == 1 and self.tree.item(children[0], "text") == "_dummy":
             self.tree.delete(children[0])
@@ -108,30 +115,23 @@ class AllFilesWindow(ctk.CTkToplevel):
         node_id = selected[0]
         cat_id = int(node_id.split("_")[1])
 
-        # 1. Expandir automaticamente se a pasta não tiver arquivos diretos
-        # mas tiver subpastas (força o carregamento dos filhos)
+        # Verifica se é o último nível (sem subcategorias)
+        has_subcats = len(self.db.get_categories(cat_id)) > 0
+
         if not self.db.has_files_in_category(cat_id):
             self.tree.item(node_id, open=True)
-            self.on_tree_expand(None)  # Dispara o carregamento dos filhos se necessário
+            self.on_tree_expand(None)
 
-        # 2. Carregar arquivos de forma recursiva (Pasta + Subpastas)
+        # Gerencia a visibilidade do botão "Baixar Todos"
+        if not has_subcats:
+            self.btn_download_all.pack(side="right", padx=10)
+        else:
+            self.btn_download_all.pack_forget()
+
         self.selected_category_id = cat_id
         self.current_page = 0
         self.all_data = self.db.get_all_files(category_id=self.selected_category_id)
         self.apply_search()
-
-    def refresh_list(self):
-        # ... (mesmo código anterior, mas com uma pequena melhoria no nome exibido) ...
-        for path in page_items:
-            row = ctk.CTkFrame(self.scroll_frame)
-            row.pack(fill="x", pady=1, padx=2)
-
-            # Se estamos listando recursivamente, pode ser útil mostrar um pedaço do caminho
-            # para o usuário saber de qual subpasta o arquivo veio
-            parts = path.split('/')
-            display_name = f"📂 {parts[-2]} > {parts[-1]}" if len(parts) > 1 else parts[-1]
-
-            ctk.CTkLabel(row, text=display_name, anchor="w").pack(side="left", fill="x", expand=True, padx=5)
 
     def apply_search(self):
         pattern = self.search_entry.get()
@@ -154,7 +154,6 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.apply_search()
 
     def refresh_list(self):
-        # Limpa widgets anteriores
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
 
@@ -169,7 +168,6 @@ class AllFilesWindow(ctk.CTkToplevel):
             row = ctk.CTkFrame(self.scroll_frame)
             row.pack(fill="x", pady=1, padx=2)
 
-            # Mostra apenas o nome do arquivo na lista para ficar mais limpo
             filename = path.split('/')[-1]
             ctk.CTkLabel(row, text=filename, anchor="w").pack(side="left", fill="x", expand=True, padx=5)
 
@@ -182,23 +180,51 @@ class AllFilesWindow(ctk.CTkToplevel):
                                     command=lambda p=path: self.handle_download(p))
             btn.pack(side="right", padx=5)
 
-    def handle_download(self, path):
+    def handle_download(self, path, silent=False):
         status = self.syncer.download_file(path)
         if status in ["success", "warning"]:
-            # Se baixou com sucesso, atualiza a lista para mostrar o botão "Executar"
-            self.refresh_list()
-            if status == "success":
-                messagebox.showinfo("Sucesso", "Download e Verificação SHA1 concluídos!")
+            if not silent:
+                self.refresh_list()
+                if status == "success":
+                    messagebox.showinfo("Sucesso", f"Download concluído:\n{path}")
+            return True
         elif status == "danger":
-            messagebox.showerror("ERRO DE INTEGRIDADE", "O SHA1 não confere! Perigo de arquivo corrompido.")
+            if not silent:
+                messagebox.showerror("ERRO DE INTEGRIDADE", f"O SHA1 não confere em:\n{path}")
+            return False
+        return False
+
+    def download_all_current(self):
+        if not self.filtered_data:
+            return
+
+        confirm = messagebox.askyesno(
+            "Confirmar Download em Massa",
+            f"Deseja baixar todos os {len(self.filtered_data)} arquivos desta pasta?\n\n"
+            "O programa respeitará a estrutura original de diretórios."
+        )
+
+        if confirm:
+            self.btn_download_all.configure(state="disabled", text="Baixando...")
+            self.update_idletasks()
+
+            for path in self.filtered_data:
+                local_path = os.path.join("downloads", path.replace("/", os.sep))
+                if not os.path.exists(local_path):
+                    self.handle_download(path, silent=True)
+                    self.update_idletasks() # Mantém a UI responsiva durante o loop
+
+            self.btn_download_all.configure(state="normal", text="Baixar Todos")
+            messagebox.showinfo("Finalizado", "Todos os downloads foram processados!")
+            self.refresh_list()
 
     def execute_file(self, local_path):
         try:
             if platform.system() == "Windows":
                 os.startfile(local_path)
-            elif platform.system() == "Darwin":  # macOS
+            elif platform.system() == "Darwin":
                 subprocess.call(["open", local_path])
-            else:  # Linux
+            else:
                 subprocess.call(["xdg-open", local_path])
         except Exception as e:
             messagebox.showerror("Erro ao Executar", f"Não foi possível abrir o arquivo: {e}")
