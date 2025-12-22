@@ -8,12 +8,13 @@ O **FileHunter MSX Manager** é um frontend moderno em Python desenvolvido para 
 
 Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Images, etc), baixando as listagens oficiais (`allfiles.txt` e `sha1sums.txt`) e armazenando-as em um banco de dados local SQLite. Ele permite que usuários de MSX mantenham uma cópia local organizada e sempre atualizada da estrutura de arquivos do site, com verificação automática de integridade.
 
-![Interface do Aplicativo](images/application3.png)
+![Interface do Aplicativo](images/application4.png)
 
 ## ✨ Funcionalidades Atuais
 
-- **Interface Híbrida Inteligente**: O gerenciador de arquivos pode ser executado como uma janela independente ou embutido diretamente na tela principal do aplicativo.
-- **Navegação Estilo Explorer Clássico**: Painel de diretórios à esquerda e listagem de arquivos à direita para uma experiência intuitiva.
+    - **Interface Híbrida Inteligente**: O gerenciador de arquivos pode ser executado como uma janela independente ou embutido diretamente na tela principal do aplicativo.
+        - *Update*: Corrigido erro de hierarquia (`AttributeError: 'AllFilesWindow' object has no attribute 'tk'`) ao acessar configurações em modo embutido.
+    - **Navegação Estilo Explorer Clássico**: Painel de diretórios à esquerda e listagem de arquivos à direita para uma experiência intuitiva.
 - **Categorização Relacional**: Processamento automático da estrutura de diretórios do servidor para navegação hierárquica.
 - **Busca Recursiva por Pastas**: Ao selecionar um diretório, o sistema exibe todos os arquivos contidos nele e em seus subdiretórios (Aggregation View).
 - **Splash Screen com Efeito Fade**: Inicialização elegante com redimensionamento dinâmico de imagem e transição suave.
@@ -22,9 +23,16 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
     - **Download em Massa**: Botão "Baixar Todos" disponível para coleções completas em diretórios finais.
     - **Verificação de Integridade (SHA1)**: Confirmação automática após o download para garantir que o arquivo não foi corrompido.
     - **Execução Direta**: Botão dinâmico que permite abrir o arquivo localmente caso ele já tenha sido baixado.
-- **Temas Customizáveis**: Suporte total a temas Dark/Light via configurações integradas ao banco de dados.
+    - **Temas Customizáveis**: Suporte total a temas Dark/Light via configurações integradas ao banco de dados.
+
+## 🛠️ Estabilidade e Correções Recentes
+
+- **Fix (UI Lifecycle)**: Ajustada a inicialização da `AllFilesWindow` para garantir compatibilidade com o método `winfo_toplevel()`, permitindo que botões de sistema funcionem corretamente mesmo quando a janela está embutida em containers.
+- **Fix (Recursão de Log)**: Removidas chamadas de `update_idletasks()` dentro do fluxo de log que causavam instabilidade e recursão infinita em processos de sincronização longos.
+- **Melhoria no Gerenciamento de Janelas**: Implementada detecção dinâmica de contexto (`embed mode`) para o fechamento seguro da aplicação e limpeza de callbacks do sincronizador.
 
 ## 🚀 Como Usar
+
 
 ### Pré-requisitos
 - **Python 3.10** ou superior (testado no 3.14).

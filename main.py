@@ -107,8 +107,8 @@ class FileHunterApp(ctk.CTk):
     def apply_initial_config(self):
         config = self.db.get_config()
         if config:
-            ctk.set_appearance_mode(config[1])
-            ctk.set_default_color_theme(config[2])
+            ctk.set_appearance_mode(config.get("appearance_mode", "Dark"))
+            ctk.set_default_color_theme(config.get("color_theme", "blue"))
 
     def update_status(self, message):
         # Redireciona para a caixa de status que agora vive dentro da AllFilesWindow (embed)

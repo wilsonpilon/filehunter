@@ -12,7 +12,7 @@ class DatabaseManager:
 
     def init_db(self):
         with self.get_connection() as conn:
-            # Tabela de Configuração
+            # Tabela de Configuração atualizada
             conn.execute("""
                          CREATE TABLE IF NOT EXISTS config
                          (
@@ -25,9 +25,24 @@ class DatabaseManager:
                              id =
                              1
                          ),
-                             default_dir TEXT, appearance_mode TEXT, color_theme TEXT,
-                             last_update TEXT)
+                             filehunter_url TEXT,
+                             openmsx_exe TEXT,
+                             default_msx_machine TEXT,
+                             ext1 TEXT, ext2 TEXT, ext3 TEXT, ext4 TEXT,
+                             appearance_mode TEXT,
+                             color_theme TEXT,
+                             last_update TEXT
+                             )
                          """)
+
+            # Garante que existe exatamente um registro
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM config")
+            if cursor.fetchone()[0] == 0:
+                conn.execute("""
+                             INSERT INTO config (id, filehunter_url, appearance_mode, color_theme)
+                             VALUES (1, 'https://download.file-hunter.com/', 'Dark', 'blue')
+                             """)
 
             # Nova Tabela de Categorias (Diretórios)
             conn.execute("""
@@ -136,16 +151,20 @@ class DatabaseManager:
 
     def get_config(self):
         with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT default_dir, appearance_mode, color_theme, last_update FROM config WHERE id = 1")
-            return cursor.fetchone()
+            conn.execute("SELECT * FROM config WHERE id = 1")
+            description = conn.execute("SELECT * FROM config LIMIT 1").description
+            columns = [column[0] for column in description]
+            row = conn.execute("SELECT * FROM config WHERE id = 1").fetchone()
+            if row:
+                return dict(zip(columns, row))
+            return None
 
-    def save_config(self, default_dir, appearance, color):
+    def save_config(self, config_dict):
         with self.get_connection() as conn:
-            conn.execute("""
-                INSERT OR REPLACE INTO config (id, default_dir, appearance_mode, color_theme)
-                VALUES (1, ?, ?, ?)
-            """, (default_dir, appearance, color))
+            keys = ", ".join(config_dict.keys())
+            placeholders = ", ".join(["?"] * len(config_dict))
+            values = list(config_dict.values())
+            conn.execute(f"UPDATE config SET ({keys}) = ({placeholders}) WHERE id = 1", values)
             conn.commit()
 
     def is_database_empty(self):

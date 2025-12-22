@@ -14,14 +14,17 @@ class FileHunterSyncer:
         self.log = status_callback
 
     def check_for_updates(self):
+        config = self.db.get_config()
+        base_url = config.get('filehunter_url') if config else self.BASE_URL
+        if not base_url.endswith('/'): base_url += '/'
+
         self.log("Verificando atualizações no servidor...")
         try:
-            response = requests.get(f"{self.BASE_URL}allfiles.txt", headers=self.HEADERS, stream=True)
+            response = requests.get(f"{base_url}allfiles.txt", headers=self.HEADERS, stream=True)
             remote_date = response.headers.get('Last-Modified')
             response.close()
 
-            config = self.db.get_config()
-            last_update = config[3] if config and len(config) > 3 else None
+            last_update = config.get('last_update') if config else None
             db_empty = self.db.is_database_empty()
 
             if db_empty or last_update != remote_date:

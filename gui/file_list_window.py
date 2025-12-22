@@ -12,9 +12,11 @@ from datetime import datetime
 class AllFilesWindow(ctk.CTkToplevel):
     def __init__(self, parent, db, syncer, embed=False):
         if embed:
-            # Se embutido, não chamamos super().__init__(parent) como Toplevel
-            # mas usamos o parent (a tela principal) para desenhar
+            # Inicializamos como um "objeto" mas precisamos que ele se comporte como widget
+            # A melhor forma de manter o suporte híbrido é garantir a inicialização básica.
             self.master = parent
+            # Se não chamarmos super().__init__, precisamos garantir que métodos de widget funcionem
+            # ou redirecionar as chamadas.
         else:
             super().__init__(parent)
             self.title("FileHunter - Gerenciador de Arquivos (Modo Explorer)")
@@ -48,7 +50,7 @@ class AllFilesWindow(ctk.CTkToplevel):
         container = self.master if embed else self
 
         if embed:
-            # Buscamos a janela principal (root) para ajustar o tamanho e título
+            # Buscamos a janela principal (root) de forma segura
             root_window = self.master.winfo_toplevel()
             root_window.geometry("1200x800")
             root_window.title("FileHunter MSX Manager - Explorer")
@@ -60,8 +62,13 @@ class AllFilesWindow(ctk.CTkToplevel):
         ctk.CTkButton(top_frame, text="Sair", width=80, fg_color="#A13333", hover_color="#7A2626",
                       command=self.quit_application).pack(side="left", padx=5)
 
+        # Correção aqui: Se estiver embutido, usamos o master para achar o root.
+        # Caso contrário, o próprio self.winfo_toplevel() funciona.
+        def get_root():
+            return self.master.winfo_toplevel() if embed else self.winfo_toplevel()
+
         ctk.CTkButton(top_frame, text="Configurações", width=120,
-                      command=lambda: self.master.open_settings()).pack(side="left", padx=5)
+                      command=lambda: get_root().open_settings()).pack(side="left", padx=5)
 
         # Botão de Sincronização com referência para desabilitar durante o processo
         self.btn_sync = ctk.CTkButton(top_frame, text="Sincronizar Banco", width=140, fg_color="#2E7D32",
