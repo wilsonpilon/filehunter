@@ -50,22 +50,31 @@ class SplashScreen(ctk.CTkToplevel):
         self.attributes("-alpha", 1.0)
 
     def fade_out(self):
-        alpha = self.attributes("-alpha")
-        if alpha > 0:
-            alpha -= 0.1
-            self.attributes("-alpha", alpha)
-            self.after(30, self.fade_out)
-        else:
-            self.destroy()
+        try:
+            if not self.winfo_exists():
+                return
+
+            # Forçamos a conversão para float para evitar erros de comparação
+            current_alpha = float(self.attributes("-alpha"))
+
+            if current_alpha > 0:
+                new_alpha = max(0, current_alpha - 0.1)
+                self.attributes("-alpha", new_alpha)
+                self.after(30, self.fade_out)
+            else:
+                self.destroy()
+        except Exception:
+            # Se a janela for fechada durante o processo, encerramos graciosamente
+            try:
+                self.destroy()
+            except:
+                pass
 
 
 class FileHunterApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.withdraw()  # Esconde a tela principal inicialmente
-
-        # Inicia Splash
-        self.splash = SplashScreen()
+        self.withdraw()
 
         self.title("FileHunter MSX Manager")
         self.geometry("600x450")
@@ -73,20 +82,27 @@ class FileHunterApp(ctk.CTk):
         self.db = DatabaseManager()
         self.syncer = FileHunterSyncer(self.db, self.update_status)
 
+        # Inicializa a Splash mas garante que a UI principal está pronta
+        self.splash = SplashScreen()
+
         self.setup_ui()
         self.apply_initial_config()
 
-        # Agenda a transição: Espera 3 seg e inicia fade
+        # O uso do after aqui é correto para não bloquear o init
         self.after(3000, self.show_main_window)
 
     def show_main_window(self):
-        self.deiconify()  # Mostra a tela principal
-        self.splash.fade_out()
+        if self.splash and self.splash.winfo_exists():
+            self.splash.fade_out()
+
+        # Pequeno delay para garantir que o fade iniciou antes de mostrar a principal
+        self.after(100, self.deiconify)
 
     def setup_ui(self):
-        # Agora delegamos a construção da UI para a lógica do AllFiles
-        # mas mantemos as referências necessárias na classe root
-        self.all_files_ui = AllFilesWindow(self, self.db, self.syncer, embed=True)
+        # Criamos um container para evitar conflitos de recursão de eventos no root
+        self.main_container = ctk.CTkFrame(self)
+        self.main_container.pack(fill="both", expand=True)
+        self.all_files_ui = AllFilesWindow(self.main_container, self.db, self.syncer, embed=True)
 
     def apply_initial_config(self):
         config = self.db.get_config()
@@ -96,8 +112,12 @@ class FileHunterApp(ctk.CTk):
 
     def update_status(self, message):
         # Redireciona para a caixa de status que agora vive dentro da AllFilesWindow (embed)
-        if hasattr(self, 'all_files_ui'):
-            self.all_files_ui.update_status(message)
+        if hasattr(self, 'all_files_ui') and self.all_files_ui:
+            try:
+                # Verifica se o método existe para evitar recursão se AllFilesWindow chamar de volta
+                self.all_files_ui.update_status(message)
+            except Exception:
+                print(f"Status: {message}")
 
     def open_settings(self):
         SettingsWindow(self, self.db, self.apply_initial_config)

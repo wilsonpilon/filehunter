@@ -4,6 +4,7 @@ import re
 import os
 import subprocess
 import platform
+import threading
 from tkinter import messagebox
 from datetime import datetime
 
@@ -47,22 +48,25 @@ class AllFilesWindow(ctk.CTkToplevel):
         container = self.master if embed else self
 
         if embed:
-            # Ajusta o tamanho da janela principal caso esteja embutido
-            self.master.geometry("1200x800")
-            self.master.title("FileHunter MSX Manager - Explorer")
+            # Buscamos a janela principal (root) para ajustar o tamanho e título
+            root_window = self.master.winfo_toplevel()
+            root_window.geometry("1200x800")
+            root_window.title("FileHunter MSX Manager - Explorer")
 
-        # 1. Barra Superior (Busca)
+        # 1. Barra Superior (Busca e Ações)
         top_frame = ctk.CTkFrame(container)
         top_frame.pack(side="top", fill="x", padx=10, pady=10)
 
         ctk.CTkButton(top_frame, text="Sair", width=80, fg_color="#A13333", hover_color="#7A2626",
-                      command=self.master.destroy).pack(side="left", padx=5)
+                      command=self.quit_application).pack(side="left", padx=5)
 
         ctk.CTkButton(top_frame, text="Configurações", width=120,
                       command=lambda: self.master.open_settings()).pack(side="left", padx=5)
 
-        ctk.CTkButton(top_frame, text="Sincronizar Banco", width=140, fg_color="#2E7D32", hover_color="#1B5E20",
-                      command=self.syncer.check_for_updates).pack(side="left", padx=5)
+        # Botão de Sincronização com referência para desabilitar durante o processo
+        self.btn_sync = ctk.CTkButton(top_frame, text="Sincronizar Banco", width=140, fg_color="#2E7D32",
+                                      hover_color="#1B5E20", command=self.start_sync_thread)
+        self.btn_sync.pack(side="left", padx=5)
 
         self.search_entry = ctk.CTkEntry(top_frame, placeholder_text="Filtrar nesta pasta (Regex)...")
         self.search_entry.pack(side="left", fill="x", expand=True, padx=5)
@@ -125,13 +129,64 @@ class AllFilesWindow(ctk.CTkToplevel):
     def update_status(self, message):
         """Atualiza o console de status na interface"""
         if hasattr(self, "status_box") and self.status_box.winfo_exists():
-            self.status_box.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
-            self.status_box.see("end")
-            self.update_idletasks()
+            try:
+                self.status_box.insert("end", f"[{datetime.now().strftime('%H:%M:%S')}] {message}\n")
+                self.status_box.see("end")
+            except Exception:
+                pass
 
-        # Opcional: mantém o log na tela inicial também
-        if self.original_status_callback:
+        # Mantém o log na tela inicial também se necessário
+        # Removido o update_idletasks que causava a recursão infinita
+        if self.original_status_callback and self.original_status_callback != self.update_status:
             self.original_status_callback(message)
+
+    def start_sync_thread(self):
+        """Inicia a sincronização em uma thread separada para não travar a UI"""
+        self.btn_sync.configure(state="disabled", text="Sincronizando...")
+        self.update_status("Iniciando sincronização em segundo plano...")
+        thread = threading.Thread(target=self.run_sync)
+        thread.daemon = True
+        thread.start()
+
+    def run_sync(self):
+        """Executa a lógica de sincronização pesada"""
+        # Definimos qual objeto de UI usaremos para o .after()
+        ui_root = self.master if hasattr(self, "master") and self.master else self
+
+        try:
+            self.syncer.check_for_updates()
+            # Volta para a thread principal para atualizar a UI
+            ui_root.after(0, self.finalize_sync)
+        except Exception as e:
+            ui_root.after(0, lambda: self.update_status(f"Erro na sincronização: {e}"))
+            ui_root.after(0, lambda: self.btn_sync.configure(state="normal", text="Sincronizar Banco"))
+
+    def quit_application(self):
+        """Fecha a aplicação com segurança, limpando recursos se necessário"""
+        # Se estiver em modo embutido, precisamos referenciar a janela principal (master)
+        # para encontrar o topo da hierarquia de widgets.
+        try:
+            top_level = self.winfo_toplevel()
+
+            # Se for uma janela Toplevel independente
+            if isinstance(self, ctk.CTkToplevel):
+                self.on_close()
+            else:
+                # Se estiver embutido ou for a raiz, encerra a janela que a contém
+                top_level.destroy()
+        except (AttributeError, RuntimeError):
+            # Fallback caso o sistema de widgets já esteja sendo destruído
+            if hasattr(self, 'master') and self.master:
+                try:
+                    self.master.winfo_toplevel().destroy()
+                except:
+                    pass
+
+    def finalize_sync(self):
+        """Finaliza a interface após a sincronização"""
+        self.btn_sync.configure(state="normal", text="Sincronizar Banco")
+        self.load_root_categories()
+        messagebox.showinfo("Sincronização", "O banco de dados foi atualizado com sucesso!")
 
     def on_close(self):
         """Restaura o callback original do syncer antes de fechar"""
@@ -139,6 +194,10 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.destroy()
 
     def load_root_categories(self):
+        # Limpa a árvore antes de carregar (importante após sincronizar)
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+
         roots = self.db.get_categories(None)
         for cat_id, name in roots:
             node = self.tree.insert("", "end", text=name, iid=f"cat_{cat_id}", open=False)
@@ -146,7 +205,7 @@ class AllFilesWindow(ctk.CTkToplevel):
 
     def on_tree_expand(self, event):
         node_id = self.tree.focus()
-        if not node_id.startswith("cat_"): return
+        if not node_id or not node_id.startswith("cat_"): return
 
         children = self.tree.get_children(node_id)
         if len(children) == 1 and self.tree.item(children[0], "text") == "_dummy":
