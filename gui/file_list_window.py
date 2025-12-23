@@ -7,7 +7,7 @@ import platform
 import threading
 from tkinter import messagebox
 from datetime import datetime
-
+from gui.disk_manager_window import DiskManagerWindow
 
 class AllFilesWindow(ctk.CTkToplevel):
     def __init__(self, parent, db, syncer, embed=False):
@@ -69,6 +69,9 @@ class AllFilesWindow(ctk.CTkToplevel):
 
         ctk.CTkButton(top_frame, text="Configurações", width=120,
                       command=lambda: get_root().open_settings()).pack(side="left", padx=5)
+
+        ctk.CTkButton(top_frame, text="Discos", width=100, fg_color="#1f538d",
+                      command=self.open_disk_manager).pack(side="left", padx=5)
 
         # Botão de Sincronização com referência para desabilitar durante o processo
         self.btn_sync = ctk.CTkButton(top_frame, text="Sincronizar Banco", width=140, fg_color="#2E7D32",
@@ -167,6 +170,12 @@ class AllFilesWindow(ctk.CTkToplevel):
         except Exception as e:
             ui_root.after(0, lambda: self.update_status(f"Erro na sincronização: {e}"))
             ui_root.after(0, lambda: self.btn_sync.configure(state="normal", text="Sincronizar Banco"))
+
+    def open_disk_manager(self):
+        """Abre a janela de gerenciamento de discos"""
+        # Se estiver embutido, usamos o toplevel real (a janela principal) como pai
+        master_window = self.master.winfo_toplevel() if hasattr(self, 'master') else self
+        DiskManagerWindow(master_window)
 
     def quit_application(self):
         """Fecha a aplicação com segurança, limpando recursos se necessário"""

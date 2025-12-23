@@ -39,7 +39,7 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
     - **Configurações Individuais por Título**: Permitir que cada jogo/programa tenha sua própria configuração de máquina e extensões, possibilitando rodar um programa específico em MSX2+ enquanto o padrão do sistema é MSX1.
     - **Execução de Outros Tipos**: Suporte para outros formatos de arquivos reconhecidos pelo ecossistema MSX.
 
-    ## 🚀 Como Usar
+## 🚀 Como Usar
 
 
 ### Pré-requisitos
