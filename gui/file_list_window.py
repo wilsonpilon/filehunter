@@ -284,13 +284,19 @@ class AllFilesWindow(ctk.CTkToplevel):
             ctk.CTkLabel(row, text=filename, anchor="w").pack(side="left", fill="x", expand=True, padx=5)
 
             local_path = os.path.join("downloads", path.replace("/", os.sep))
+
+            # Container para botões de ação
+            actions_frame = ctk.CTkFrame(row, fg_color="transparent")
+            actions_frame.pack(side="right")
+
             if os.path.exists(local_path):
-                btn = ctk.CTkButton(row, text="Exec", width=60, fg_color="#2E7D32",
-                                    command=lambda p=local_path: self.execute_file(p))
-            else:
-                btn = ctk.CTkButton(row, text="Baixar", width=60,
-                                    command=lambda p=path: self.handle_download(p))
-            btn.pack(side="right", padx=5)
+                ctk.CTkButton(actions_frame, text="Exec", width=60, fg_color="#2E7D32",
+                              command=lambda p=local_path: self.execute_file(p)).pack(side="right", padx=2)
+
+            # O botão baixar sempre visível ou condicional
+            btn_text = "Re-Baixar" if os.path.exists(local_path) else "Baixar"
+            ctk.CTkButton(actions_frame, text=btn_text, width=60,
+                          command=lambda p=path: self.handle_download(p)).pack(side="right", padx=2)
 
     def handle_download(self, path, silent=False):
         status = self.syncer.download_file(path)
@@ -329,14 +335,65 @@ class AllFilesWindow(ctk.CTkToplevel):
 
     def execute_file(self, local_path):
         try:
-            if platform.system() == "Windows":
-                os.startfile(local_path)
-            elif platform.system() == "Darwin":
-                subprocess.call(["open", local_path])
+            config = self.db.get_config()
+            if not config or not config.get('openmsx_exe'):
+                messagebox.showwarning("Configuração", "Configure o executável do openMSX primeiro.")
+                return
+
+            openmsx_exe = os.path.abspath(config.get('openmsx_exe'))
+            machine = config.get('default_msx_machine')
+
+            # Inicia o comando com o executável
+            cmd = [openmsx_exe]
+
+            if machine and machine != "_nenhuma_":
+                cmd.extend(["-machine", machine])
+
+            # Adiciona extensões
+            for i in range(1, 5):
+                ext = config.get(f'ext{i}')
+                if ext and ext != "_nenhuma_":
+                    cmd.extend(["-ext", ext])
+
+            # Determina mídia pelo PATH COMPLETO
+            path_upper = local_path.upper()
+            abs_local_path = os.path.abspath(local_path)
+
+            if f"{os.sep}DSK{os.sep}" in path_upper or path_upper.endswith(".DSK"):
+                cmd.extend(["-diska", abs_local_path])
+            elif f"{os.sep}ROM{os.sep}" in path_upper or any(
+                    path_upper.endswith(ext) for ext in [".ROM", ".MX1", ".MX2"]):
+                cmd.extend(["-carta", abs_local_path])
             else:
-                subprocess.call(["xdg-open", local_path])
+                if platform.system() == "Windows":
+                    os.startfile(abs_local_path)
+                    return
+                else:
+                    cmd.append(abs_local_path)
+
+            # Log para conferência
+            display_cmd = " ".join([f'"{arg}"' if " " in arg else arg for arg in cmd])
+            self.update_status(f"Lançando comando: {display_cmd}")
+
+            # Execução melhorada:
+            # 1. Usamos caminhos absolutos para tudo
+            # 2. Definimos o diretório de trabalho para a pasta do executável
+            # 3. No Windows, usamos creationflags para desvincular o processo
+
+            exe_dir = os.path.dirname(openmsx_exe)
+
+            if platform.system() == "Windows":
+                # DETACHED_PROCESS = 0x00000008 para o processo não morrer com o app
+                subprocess.Popen(cmd, cwd=exe_dir, creationflags=0x00000008)
+            else:
+                subprocess.Popen(cmd, cwd=exe_dir)
+
+            self.update_status("Status: Solicitação de execução enviada.")
+
         except Exception as e:
-            messagebox.showerror("Erro ao Executar", f"Não foi possível abrir o arquivo: {e}")
+            error_msg = f"Erro crítico na execução: {str(e)}"
+            self.update_status(error_msg)
+            messagebox.showerror("Erro ao Executar", error_msg)
 
     def next_page(self):
         if (self.current_page + 1) * self.items_per_page < len(self.filtered_data):
