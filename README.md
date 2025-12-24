@@ -8,7 +8,7 @@ O **FileHunter MSX Manager** é um frontend moderno em Python desenvolvido para 
 
 Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Images, etc), baixando as listagens oficiais (`allfiles.txt` e `sha1sums.txt`) e armazenando-as em um banco de dados local SQLite. Ele permite que usuários de MSX mantenham uma cópia local organizada e sempre atualizada da estrutura de arquivos do site, com verificação automática de integridade.
 
-![Interface do Aplicativo](images/application4.png)
+![Interface do Aplicativo](images/application5.png)
 
 ## ✨ Funcionalidades Atuais
 
@@ -25,19 +25,24 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
         - **Execução Inteligente (openMSX)**: Integração direta com o emulador openMSX, detectando automaticamente o tipo de mídia (Disk ou ROM) através da estrutura de pastas e extensões.
         - **Log de Conferência**: Exibição em tempo real da linha de comando enviada ao emulador na área de status, facilitando o ajuste de configurações.
         - **Temas Customizáveis**: Suporte total a temas Dark/Light via configurações integradas ao banco de dados.
+- **Gerenciador de Discos Unificado**: Introdução da interface para manipular arquivos `.dsk`, com suporte a extração, exclusão e criação de novos discos.
+- **Suporte a ZIP no Disk Manager**: Possibilidade de abrir arquivos ZIP e injetar seu conteúdo diretamente em imagens de disco MSX.
+- **Expansão de Slots de Extensão**: Aumento de 2 para **4 slots de extensões simultâneas** para o openMSX, permitindo combinações complexas de hardware (ex: Moonsound + GFX9000 + FM-PAC).
 
-    ## 🛠️ Estabilidade e Correções Recentes
+## 🛠️ Estabilidade e Correções Recentes
 
-    - **Update (Lançador openMSX)**: Implementada a detecção dinâmica de tipos de mídia via caminhos absolutos. Arquivos em diretórios `\DSK\` são montados automaticamente no Drive A (`-diska`), enquanto arquivos em `\ROM\` (incluindo `.MX1` e `.MX2`) são carregados como cartuchos (`-carta`).
-    - **Fix (Execução no Windows)**: Adicionadas flags de criação de processo (`DETACHED_PROCESS`) e definição de diretório de trabalho (`cwd`), garantindo que o emulador abra corretamente mesmo quando o caminho possui espaços.
-    - **Melhoria na UI**: O comando completo de execução agora é mostrado no console de status para conferência do usuário.
+- **Update (Lançador openMSX)**: Implementada a detecção dinâmica de tipos de mídia via caminhos absolutos. Arquivos em diretórios `\DSK\` são montados automaticamente no Drive A (`-diska`), enquanto arquivos em `\ROM\` (incluindo `.MX1` e `.MX2`) são carregados como cartuchos (`-carta`).
+- **Fix (Execução no Windows)**: Adicionadas flags de criação de processo (`DETACHED_PROCESS`) e definição de diretório de trabalho (`cwd`), garantindo que o emulador abra corretamente mesmo quando o caminho possui espaços.
+- **Melhoria na UI**: O comando completo de execução agora é mostrado no console de status para conferência do usuário.
+- **Correção de Loop de Log**: Bug que causava a repetição infinita de mensagens no console de status durante a execução de arquivos foi resolvido.
+- **Ajuste de Banco de Dados**: Atualização da tabela `file_configs` para suportar as novas colunas de extensão (`ext3`, `ext4`).
 
-    ## 🚀 Próximos Passos (Roadmap)
+## 🚀 Próximos Passos (Roadmap)
 
-    - **Suporte a Novas Mídias**: Implementação do carregamento de fitas cassete (`.CAS`) no openMSX.
-    - **Visualizador de Documentos e Mídia**: Integração de visualização nativa (ou via sistema) para arquivos PDF (manuais) e imagens (capas/screenshots).
-    - **Configurações Individuais por Título**: Permitir que cada jogo/programa tenha sua própria configuração de máquina e extensões, possibilitando rodar um programa específico em MSX2+ enquanto o padrão do sistema é MSX1.
-    - **Execução de Outros Tipos**: Suporte para outros formatos de arquivos reconhecidos pelo ecossistema MSX.
+- **Suporte a Novas Mídias**: Implementação do carregamento de fitas cassete (`.CAS`) no openMSX.
+- **Visualizador de Documentos e Mídia**: Integração de visualização nativa (ou via sistema) para arquivos PDF (manuais) e imagens (capas/screenshots).
+- **Configurações Individuais por Título**: Permitir que cada jogo/programa tenha sua própria configuração de máquina e extensões, possibilitando rodar um programa específico em MSX2+ enquanto o padrão do sistema é MSX1.
+- **Execução de Outros Tipos**: Suporte para outros formatos de arquivos reconhecidos pelo ecossistema MSX.
 
 ## 🚀 Como Usar
 
@@ -85,5 +90,32 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
 - **Pillow (PIL)**: Processamento de imagens da interface e splash screen.
 - **Hashlib**: Cálculo de SHA1 para segurança de dados.
 
+---
+
+## 📜 Histórico de Versões e Atualizações
+
+### [v1.2.0] - Atualização de Gerenciamento e Estabilidade (Atual)
+- **Gerenciador de Discos Unificado**: Introdução da interface para manipular arquivos `.dsk`, com suporte a extração, exclusão e criação de novos discos.
+- **Suporte a ZIP no Disk Manager**: Possibilidade de abrir arquivos ZIP e injetar seu conteúdo diretamente em imagens de disco MSX.
+- **Expansão de Slots de Extensão**: Aumento de 2 para **4 slots de extensões simultâneas** para o openMSX, permitindo combinações complexas de hardware (ex: Moonsound + GFX9000 + FM-PAC).
+- **Correção de Loop de Log**: Bug que causava a repetição infinita de mensagens no console de status durante a execução de arquivos foi resolvido.
+- **Ajuste de Banco de Dados**: Atualização da tabela `file_configs` para suportar as novas colunas de extensão (`ext3`, `ext4`).
+
+### [v1.1.0] - Integração de Interface e Configurações
+- **Modo Explorer Embutido**: A listagem de arquivos foi integrada à janela principal para uma navegação mais fluida.
+- **Configurações por Arquivo**: Adicionada a capacidade de salvar máquinas e mídias preferenciais para arquivos específicos.
+- **Splash Screen**: Adição de tela de abertura com efeito de fade-out ao iniciar o aplicativo.
+- **Sincronização em Background**: Processo de atualização do banco de dados movido para uma thread separada para evitar travamentos da UI.
+
+### [v1.0.0] - Lançamento Inicial
+- **Navegação de Repositório**: Acesso completo à árvore de diretórios do File-Hunter.
+- **Download Inteligente**: Sistema de download com verificação de integridade via SHA1.
+- **Lançador Básico**: Execução de arquivos no openMSX com comandos básicos.
+- **Temas**: Suporte a temas Light/Dark via CustomTkinter.
+
+---
+
+## ⚖️ Licença
+- Este projeto é distribuído sob a licença GPLv3. Veja o arquivo `LICENSE` para detalhes.
 ---
 *Este projeto não possui vínculo oficial com o site File-Hunter, sendo uma ferramenta feita por fãs para a comunidade MSX.*

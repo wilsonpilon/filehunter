@@ -8,6 +8,8 @@ import threading
 from tkinter import messagebox
 from datetime import datetime
 from gui.disk_manager_window import DiskManagerWindow
+from gui.file_config_window import FileConfigWindow
+
 
 class AllFilesWindow(ctk.CTkToplevel):
     def __init__(self, parent, db, syncer, embed=False):
@@ -144,11 +146,6 @@ class AllFilesWindow(ctk.CTkToplevel):
                 self.status_box.see("end")
             except Exception:
                 pass
-
-        # Mantém o log na tela inicial também se necessário
-        # Removido o update_idletasks que causava a recursão infinita
-        if self.original_status_callback and self.original_status_callback != self.update_status:
-            self.original_status_callback(message)
 
     def start_sync_thread(self):
         """Inicia a sincronização em uma thread separada para não travar a UI"""
@@ -300,12 +297,17 @@ class AllFilesWindow(ctk.CTkToplevel):
 
             if os.path.exists(local_path):
                 ctk.CTkButton(actions_frame, text="Exec", width=60, fg_color="#2E7D32",
-                              command=lambda p=local_path: self.execute_file(p)).pack(side="right", padx=2)
+                              command=lambda lp=local_path, rp=path: self.execute_file(lp, rp)).pack(side="right",
+                                                                                                     padx=2)
 
-            # O botão baixar sempre visível ou condicional
-            btn_text = "Re-Baixar" if os.path.exists(local_path) else "Baixar"
-            ctk.CTkButton(actions_frame, text=btn_text, width=60,
-                          command=lambda p=path: self.handle_download(p)).pack(side="right", padx=2)
+            # O botão baixar vira "Configurar" se o arquivo existe
+            if os.path.exists(local_path):
+
+                ctk.CTkButton(actions_frame, text="Configurar", width=80,
+                              command=lambda p=path: self.open_file_config(p)).pack(side="right", padx=2)
+            else:
+                ctk.CTkButton(actions_frame, text="Baixar", width=60,
+                              command=lambda p=path: self.handle_download(p)).pack(side="right", padx=2)
 
     def handle_download(self, path, silent=False):
         status = self.syncer.download_file(path)
@@ -342,7 +344,7 @@ class AllFilesWindow(ctk.CTkToplevel):
             messagebox.showinfo("Finalizado", "Todos os downloads foram processados!")
             self.refresh_list()
 
-    def execute_file(self, local_path):
+    def execute_file(self, local_path, relative_path=None):
         try:
             config = self.db.get_config()
             if not config or not config.get('openmsx_exe'):
@@ -350,33 +352,49 @@ class AllFilesWindow(ctk.CTkToplevel):
                 return
 
             openmsx_exe = os.path.abspath(config.get('openmsx_exe'))
-            machine = config.get('default_msx_machine')
 
-            # Inicia o comando com o executável
+            # Tenta obter configuração específica do arquivo
+            file_cfg = self.db.get_file_config(relative_path) if relative_path else None
+
+            if file_cfg:
+                machine = file_cfg[0]
+                media_type = file_cfg[1]
+                exts = [file_cfg[2], file_cfg[3]]
+            else:
+                machine = config.get('default_msx_machine')
+                media_type = "Auto"
+                exts = [config.get(f'ext{i}') for i in range(1, 5)]
+
             cmd = [openmsx_exe]
 
             if machine and machine != "_nenhuma_":
                 cmd.extend(["-machine", machine])
 
-            # Adiciona extensões
-            for i in range(1, 5):
-                ext = config.get(f'ext{i}')
+            for ext in exts:
                 if ext and ext != "_nenhuma_":
                     cmd.extend(["-ext", ext])
 
-            # Determina mídia pelo PATH COMPLETO
-            path_upper = local_path.upper()
             abs_local_path = os.path.abspath(local_path)
+            path_upper = local_path.upper()
 
-            if f"{os.sep}DSK{os.sep}" in path_upper or path_upper.endswith(".DSK"):
-                cmd.extend(["-diska", abs_local_path])
-            elif f"{os.sep}ROM{os.sep}" in path_upper or any(
-                    path_upper.endswith(ext) for ext in [".ROM", ".MX1", ".MX2"]):
+            # Lógica de Mídia baseada na configuração salva ou Auto
+            if media_type == "ROM" or (
+                    media_type == "Auto" and any(path_upper.endswith(e) for e in [".ROM", ".MX1", ".MX2"])):
                 cmd.extend(["-carta", abs_local_path])
+            elif media_type == "DSK" or (media_type == "Auto" and path_upper.endswith(".DSK")):
+                cmd.extend(["-diska", abs_local_path])
+            elif media_type == "CAS" or (media_type == "Auto" and path_upper.endswith(".CAS")):
+                cmd.extend(["-cassetteplayer", abs_local_path])
+            elif media_type == "DirAsDisk":
+                # Se for um zip, openMSX aceita como diretório em algumas versões,
+                # mas o ideal é passar a pasta se for DirAsDisk
+                cmd.extend(["-diska", abs_local_path])
             else:
-                if platform.system() == "Windows":
-                    os.startfile(abs_local_path)
-                    return
+                # Fallback para o comportamento atual se for Auto e não identificado
+                if f"{os.sep}DSK{os.sep}" in path_upper:
+                    cmd.extend(["-diska", abs_local_path])
+                elif f"{os.sep}ROM{os.sep}" in path_upper:
+                    cmd.extend(["-carta", abs_local_path])
                 else:
                     cmd.append(abs_local_path)
 
@@ -403,6 +421,11 @@ class AllFilesWindow(ctk.CTkToplevel):
             error_msg = f"Erro crítico na execução: {str(e)}"
             self.update_status(error_msg)
             messagebox.showerror("Erro ao Executar", error_msg)
+
+    def open_file_config(self, relative_path):
+        # Se estiver embutido, self não é um widget real, então usamos self.master
+        parent = self.master if hasattr(self, 'master') and self.master else self
+        FileConfigWindow(parent, self.db, relative_path)
 
     def next_page(self):
         if (self.current_page + 1) * self.items_per_page < len(self.filtered_data):

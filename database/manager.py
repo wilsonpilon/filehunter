@@ -98,6 +98,29 @@ class DatabaseManager:
             conn.execute("CREATE TABLE IF NOT EXISTS sha1sums (hash TEXT, filepath TEXT)")
             conn.commit()
 
+            conn.execute('''
+                         CREATE TABLE IF NOT EXISTS file_configs
+                         (
+                             file_path
+                             TEXT
+                             PRIMARY
+                             KEY,
+                             machine
+                             TEXT,
+                             media_type
+                             TEXT,
+                             ext1
+                             TEXT,
+                             ext2
+                             TEXT,
+                             ext3
+                             TEXT,
+                             ext4
+                             TEXT
+                         )
+                         ''')
+            conn.commit()
+
     def clear_and_populate_files(self, data_list):
         """Limpa e insere arquivos criando a árvore de categorias."""
         with self.get_connection() as conn:
@@ -236,4 +259,17 @@ class DatabaseManager:
             cursor.execute("SELECT 1 FROM allfiles WHERE category_id = ? LIMIT 1", (category_id,))
             return cursor.fetchone() is not None
 
+    def save_file_config(self, file_path, machine, media_type, ext1, ext2, ext3, ext4):
+        with self.get_connection() as conn:
+            conn.execute('''
+                INSERT OR REPLACE INTO file_configs (file_path, machine, media_type, ext1, ext2, ext3, ext4)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            ''', (file_path, machine, media_type, ext1, ext2, ext3, ext4))
+            conn.commit()
 
+    def get_file_config(self, file_path):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT machine, media_type, ext1, ext2, ext3, ext4 FROM file_configs WHERE file_path = ?',
+                           (file_path,))
+            return cursor.fetchone()
