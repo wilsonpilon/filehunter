@@ -11,7 +11,16 @@ class OpenMSXBridge:
         self.on_output_received = None
 
     def is_running(self):
-        return self.process is not None and self.process.poll() is None
+        if self.process is None:
+            return False
+
+        # O poll() retorna None se o processo ainda estiver rodando
+        status = self.process.poll()
+        if status is not None:
+            # Se o processo terminou, limpamos a referência para não enganar outras threads
+            self.process = None
+            return False
+        return True
 
     def start(self, extra_args=None):
         """Inicia o openMSX com redirecionamento de entrada/saída."""
