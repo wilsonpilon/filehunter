@@ -62,7 +62,9 @@ class AllFilesWindow(ctk.CTkToplevel):
         container = self.master if embed else self
 
         if embed:
-            root_window = self.master.winfo_toplevel()
+            # Se estiver embutido, self não é um widget Tkinter completo ainda
+            # pois super().__init__ não foi chamado. Usamos container.
+            root_window = container.winfo_toplevel()
             root_window.geometry("1200x800")
             root_window.title("FileHunter MSX Manager - Explorer")
 
@@ -74,7 +76,7 @@ class AllFilesWindow(ctk.CTkToplevel):
                       command=self.quit_application).pack(side="left", padx=5)
 
         def get_root():
-            return self.master.winfo_toplevel() if embed else self.winfo_toplevel()
+            return container.winfo_toplevel()
 
         ctk.CTkButton(top_frame, text="Configurações", width=120,
                       command=lambda: get_root().open_settings()).pack(side="left", padx=5)
@@ -404,7 +406,16 @@ class AllFilesWindow(ctk.CTkToplevel):
             self.refresh_list()
 
     def open_file_config(self, relative_path):
-        FileConfigWindow(self, self.db, relative_path)
+        # Determinamos o mestre (janela principal) de forma segura
+        if hasattr(self, 'master') and self.master:
+            master = self.master.winfo_toplevel()
+        elif hasattr(self, 'winfo_toplevel'):
+            master = self.winfo_toplevel()
+        else:
+            # Fallback caso esteja em modo embed e self não seja widget
+            master = None
+
+        FileConfigWindow(master, self.db, relative_path)
 
     def open_disk_manager(self):
         DiskManagerWindow(self)
