@@ -4,6 +4,7 @@ import re
 import os
 import threading
 import time
+import zipfile
 import glob
 import shutil
 from datetime import datetime
@@ -312,9 +313,16 @@ class AllFilesWindow(ctk.CTkToplevel):
         messagebox.showinfo("Sucesso", "Banco atualizado!")
 
     def on_close(self):
-        if self.msx_bridge: self.msx_bridge.stop()
+        if self.msx_bridge:
+            self.msx_bridge.stop()
         self.syncer.log = self.original_status_callback
-        self.destroy()
+
+        # Só chamamos destroy() se formos um widget real (não embutido)
+        if hasattr(self, "master") and isinstance(self, ctk.CTkToplevel):
+            try:
+                self.destroy()
+            except Exception:
+                pass
 
     def load_root_categories(self):
         for i in self.tree.get_children(): self.tree.delete(i)
@@ -366,25 +374,143 @@ class AllFilesWindow(ctk.CTkToplevel):
     def refresh_list(self):
         for widget in self.scroll_frame.winfo_children(): widget.destroy()
         start = self.current_page * self.items_per_page
-        page_items = self.filtered_data[start:start+self.items_per_page]
+        page_items = self.filtered_data[start:start + self.items_per_page]
         total_pages = max(1, (len(self.filtered_data) + self.items_per_page - 1) // self.items_per_page)
-        self.page_label.configure(text=f"Pag {self.current_page+1}/{total_pages} ({len(self.filtered_data)} arq)")
+        self.page_label.configure(text=f"Pag {self.current_page + 1}/{total_pages} ({len(self.filtered_data)} arq)")
         for path in page_items:
             row = ctk.CTkFrame(self.scroll_frame)
             row.pack(fill="x", pady=1, padx=2)
             filename = path.split('/')[-1]
-            ctk.CTkLabel(row, text=filename, anchor="w").pack(side="left", fill="x", expand=True, padx=5)
             local_path = os.path.join("downloads", path.replace("/", os.sep))
+
+            # Verificação de Container vs Arquivo Único Compactado
+            is_real_container = False
+            display_icon = ""
+            if filename.lower().endswith('.zip') and os.path.exists(local_path):
+                if self.is_nested_archive(local_path):
+                    is_real_container = True
+                    display_icon = "📦 "
+
+            ctk.CTkLabel(row, text=f"{display_icon}{filename}", anchor="w").pack(side="left", fill="x", expand=True,
+                                                                                 padx=5)
+
             actions_frame = ctk.CTkFrame(row, fg_color="transparent")
             actions_frame.pack(side="right")
             if os.path.exists(local_path):
-                ctk.CTkButton(actions_frame, text="Exec", width=60, fg_color="#2E7D32",
-                              command=lambda lp=local_path, rp=path: self.execute_file(lp, rp)).pack(side="right", padx=2)
+                if is_real_container:
+                    ctk.CTkButton(actions_frame, text="Descompactar", width=100, fg_color="#E67E22",
+                                  command=lambda lp=local_path, rp=path: self.handle_unzip_container(lp, rp)).pack(
+                        side="right", padx=2)
+                else:
+                    # Se não for container real, tratamos como executável direto
+                    ctk.CTkButton(actions_frame, text="Exec", width=60, fg_color="#2E7D32",
+                                  command=lambda lp=local_path, rp=path: self.execute_file(lp, rp)).pack(side="right",
+                                                                                                         padx=2)
+
                 ctk.CTkButton(actions_frame, text="Config", width=60,
                               command=lambda p=path: self.open_file_config(p)).pack(side="right", padx=2)
             else:
                 ctk.CTkButton(actions_frame, text="Baixar", width=60,
                               command=lambda p=path: self.handle_download(p)).pack(side="right", padx=2)
+
+    def is_nested_archive(self, zip_path):
+        """
+        Verifica se o ZIP é um container real (múltiplos arquivos ou ZIP/DSK interno).
+        Retorna False se contiver apenas um único arquivo .ROM, .DSK ou .CAS.
+        """
+        try:
+            if not zipfile.is_zipfile(zip_path):
+                return False
+            with zipfile.ZipFile(zip_path, 'r') as z:
+                infolist = z.infolist()
+
+                # Se tiver mais de um arquivo, tratamos como container (diretório)
+                if len(infolist) > 1:
+                    return True
+
+                # Se tiver apenas um, verificamos se é um arquivo de sistema ou mídia direta
+                if len(infolist) == 1:
+                    name = infolist[0].filename.lower()
+                    # Se o arquivo único for outro ZIP ou algo que não seja mídia direta do MSX, é container
+                    if name.endswith(('.zip', '.rar', '.7z')):
+                        return True
+                    # Se for uma mídia direta, NÃO é container (mostra Exec)
+                    if name.endswith(('.dsk', '.rom', '.mx1', '.mx2', '.cas')):
+                        return False
+
+            return True  # Fallback para segurança
+        except Exception:
+            pass
+        return False
+
+    def handle_unzip_container(self, local_path, relative_path):
+        """Extrai o container e registra os novos arquivos no banco de dados."""
+        try:
+            base_dir = os.path.dirname(local_path)
+            folder_name = os.path.splitext(os.path.basename(local_path))[0]
+            extract_path = os.path.join(base_dir, folder_name)
+
+            os.makedirs(extract_path, exist_ok=True)
+
+            with zipfile.ZipFile(local_path, 'r') as z:
+                z.extractall(extract_path)
+
+            # Registrar no Banco de Dados
+            # O caminho relativo no banco será: caminho/do/zip/nome_do_zip/arquivo_extraido
+            new_files_to_register = []
+            rel_base_path = os.path.dirname(relative_path)
+
+            for root, dirs, files in os.walk(extract_path):
+                for file in files:
+                    abs_f_path = os.path.join(root, file)
+                    # Calcula o caminho relativo para o banco (usando barras do servidor)
+                    rel_suffix = os.path.relpath(abs_f_path, os.path.dirname(local_path)).replace(os.sep, '/')
+                    db_path = f"{rel_base_path}/{rel_suffix}".strip('/')
+                    new_files_to_register.append(db_path)
+
+            if new_files_to_register:
+                # Usamos uma versão adaptada do populate para não apagar o banco todo
+                self.register_extracted_files(new_files_to_register)
+
+            messagebox.showinfo("Sucesso",
+                                f"Container extraído em:\n{folder_name}\n\n{len(new_files_to_register)} novos itens adicionados à biblioteca.")
+            self.load_root_categories()  # Atualiza a árvore para mostrar a nova pasta
+            self.refresh_list()
+
+        except Exception as e:
+            messagebox.showerror("Erro na Extração", str(e))
+
+    def register_extracted_files(self, file_paths):
+        """Injeta novos caminhos de arquivos no banco mantendo a hierarquia."""
+        with self.db.get_connection() as conn:
+            cursor = conn.cursor()
+            # Precisamos pegar o cache de categorias atual para evitar duplicatas
+            cursor.execute("SELECT id, name, parent_id FROM categories")
+            # Lógica simplificada: para cada novo arquivo, garante que a estrutura de pastas existe
+            for filepath in file_paths:
+                parts = filepath.split('/')
+                filename = parts[-1]
+                directories = parts[:-1]
+
+                current_parent_id = None
+                for dir_name in directories:
+                    cursor.execute(
+                        "SELECT id FROM categories WHERE name = ? AND (parent_id = ? OR (parent_id IS NULL AND ? IS NULL))",
+                        (dir_name, current_parent_id, current_parent_id))
+                    row = cursor.fetchone()
+                    if row:
+                        current_parent_id = row[0]
+                    else:
+                        cursor.execute("INSERT INTO categories (name, parent_id) VALUES (?, ?)",
+                                       (dir_name, current_parent_id))
+                        current_parent_id = cursor.lastrowid
+
+                # Verifica se arquivo já existe para não duplicar
+                cursor.execute("SELECT 1 FROM allfiles WHERE filepath = ?", (filepath,))
+                if not cursor.fetchone():
+                    cursor.execute("INSERT INTO allfiles (filepath, filename, category_id) VALUES (?, ?, ?)",
+                                   (filepath, filename, current_parent_id))
+            conn.commit()
 
     def handle_download(self, path, silent=False):
         status = self.syncer.download_file(path)
@@ -431,5 +557,17 @@ class AllFilesWindow(ctk.CTkToplevel):
             self.refresh_list()
 
     def quit_application(self):
+        # Primeiro limpa a lógica (parar bridge, restaurar callbacks)
         self.on_close()
-        self.master.winfo_toplevel().destroy()
+
+        # Identifica a janela principal de forma segura para fechar tudo
+        try:
+            if hasattr(self, 'master') and self.master:
+                root = self.master.winfo_toplevel()
+            else:
+                root = self.winfo_toplevel()
+            root.destroy()
+        except Exception:
+            # Fallback caso os widgets já tenham sido destruídos
+            import sys
+            sys.exit(0)

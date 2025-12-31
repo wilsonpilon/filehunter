@@ -19,6 +19,8 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
 - **Busca Recursiva por Pastas**: Ao selecionar um diretório, o sistema exibe todos os arquivos contidos nele e em seus subdiretórios (Aggregation View).
 - **Splash Screen com Efeito Fade**: Inicialização elegante com redimensionamento dinâmico de imagem e transição suave.
 - **Gerenciador de Arquivos Paginado**: Navegação fluida em milhares de registros com suporte a:
+        - **Detecção Inteligente de Containers**: Identificação automática de arquivos ZIP que contêm outros arquivos compactados ou imagens de disco (ZIP dentro de ZIP) através do ícone `📦`.
+        - **Extração e Catalogação Automática**: Botão "Descompactar" para containers, que extrai o conteúdo para uma subpasta local e registra instantaneamente os novos arquivos no banco de dados, permitindo a navegação hierárquica imediata.
         - **Busca por Expressões Regulares (Regex)**: Filtragem poderosa de arquivos.
         - **Download em Massa**: Botão "Baixar Todos" disponível para coleções completas em diretórios finais.
         - **Verificação de Integridade (SHA1)**: Confirmação automática após o download para garantir que o arquivo não foi corrompido.
@@ -36,6 +38,8 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
 - **Melhoria na UI**: O comando completo de execução agora é mostrado no console de status para conferência do usuário.
 - **Correção de Loop de Log**: Bug que causava a repetição infinita de mensagens no console de status durante a execução de arquivos foi resolvido.
 - **Ajuste de Banco de Dados**: Atualização da tabela `file_configs` para suportar as novas colunas de extensão (`ext3`, `ext4`).
+- **Update (Gestão de Containers)**: Implementada lógica de verificação de arquivos aninhados sem extração prévia. Arquivos extraídos via interface agora são injetados na árvore de diretórios do banco de dados, mantendo a integridade da navegação estilo Explorer.
+- **Update (Lançador openMSX)**: Implementada a detecção dinâmica de tipos de mídia via caminhos absolutos. Arquivos em diretórios `\DSK\` são montados automaticamente no Drive A (`-diska`), enquanto arquivos em `\ROM\` (incluindo `.MX1` e `.MX2`) são carregados como cartuchos (`-carta`).
 
 ## 🚀 Próximos Passos (Roadmap)
 
@@ -93,6 +97,11 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
 ---
 
 ## 📜 Histórico de Versões e Atualizações
+
+### [v1.2.5] - Inteligência de Arquivos e Containers (Atual)
+- **Suporte a ZIP Aninhado**: O sistema agora identifica containers e oferece extração direta com reinjeção no banco de dados.
+- **Navegação Dinâmica**: Arquivos descompactados aparecem automaticamente na árvore de diretórios à esquerda.
+- **Interface Visual**: Adição de ícones de status (`📦`, `📄`) para facilitar a identificação do tipo de arquivo e conteúdo.
 
 ### [v1.2.0] - Atualização de Gerenciamento e Estabilidade (Atual)
 - **Gerenciador de Discos Unificado**: Introdução da interface para manipular arquivos `.dsk`, com suporte a extração, exclusão e criação de novos discos.
