@@ -10,7 +10,9 @@ import shutil
 from datetime import datetime
 from gui.disk_manager_window import DiskManagerWindow
 from gui.file_config_window import FileConfigWindow
+from gui.text_viewer_window import TextViewerWindow
 from support.msx_bridge import OpenMSXBridge
+
 
 class AllFilesWindow(ctk.CTkToplevel):
     def __init__(self, parent, db, syncer, embed=False):
@@ -31,6 +33,7 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.sort_asc = True
         self.current_page = 0
         self.items_per_page = 50
+        self.selected_row_frame = None  # Armazena a linha selecionada atualmente
 
         # Inicializa a bridge com o executável configurado
         config = self.db.get_config()
@@ -63,8 +66,6 @@ class AllFilesWindow(ctk.CTkToplevel):
         container = self.master if embed else self
 
         if embed:
-            # Se estiver embutido, self não é um widget Tkinter completo ainda
-            # pois super().__init__ não foi chamado. Usamos container.
             root_window = container.winfo_toplevel()
             root_window.geometry("1200x800")
             root_window.title("FileHunter MSX Manager - Explorer")
@@ -177,7 +178,6 @@ class AllFilesWindow(ctk.CTkToplevel):
                 messagebox.showwarning("Configuração", "Configure o executável do openMSX.")
                 return
 
-            openmsx_exe = os.path.abspath(config.get('openmsx_exe'))
             file_cfg = self.db.get_file_config(relative_path) if relative_path else None
 
             if file_cfg:
@@ -192,7 +192,8 @@ class AllFilesWindow(ctk.CTkToplevel):
             path_upper = local_path.upper()
             media_args = []
 
-            if media_type == "ROM" or (media_type == "Auto" and any(path_upper.endswith(e) for e in [".ROM", ".MX1", ".MX2"])):
+            if media_type == "ROM" or (
+                    media_type == "Auto" and any(path_upper.endswith(e) for e in [".ROM", ".MX1", ".MX2"])):
                 media_args.extend(["-carta", abs_local_path])
             elif media_type == "DSK" or (media_type == "Auto" and path_upper.endswith(".DSK")):
                 media_args.extend(["-diska", abs_local_path])
@@ -227,14 +228,12 @@ class AllFilesWindow(ctk.CTkToplevel):
         if not self.msx_bridge:
             return
 
-        # 1. Tratamento imediato do nome
         base_filename = os.path.basename(relative_path)
         while '.' in base_filename:
             base_filename = os.path.splitext(base_filename)[0]
 
         docs_dir = os.path.join(os.path.expanduser("~"), "Documents", "openMSX", "screenshots")
         abs_target = os.path.abspath(target_dir)
-        # Nota: Inclusão do ESPAÇO antes dos 4 dígitos como solicitado
         mask = f"{base_filename} [0-9][0-9][0-9][0-9].png"
 
         self.update_status(f"Monitoramento Iniciado:")
@@ -242,12 +241,10 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.update_status(f"  > Destino: {abs_target}")
         self.update_status(f"  > Máscara: '{mask}'")
 
-        # Pré-checagem
         initial_check = glob.glob(os.path.join(docs_dir, mask))
         if initial_check:
             self.update_status(f"  > Já existem {len(initial_check)} imagens na origem.")
 
-        # Aguarda encerramento
         wait_count = 0
         while True:
             if not self.msx_bridge.is_running():
@@ -283,7 +280,6 @@ class AllFilesWindow(ctk.CTkToplevel):
         except Exception as e:
             self.update_status(f"Erro no coletor: {e}")
 
-    # ... Restante dos métodos (apply_search, load_root_categories, etc.) mantém a lógica original ...
     def send_msx_command(self):
         if not hasattr(self, 'msx_entry'): return
         command = self.msx_entry.get().strip()
@@ -317,7 +313,6 @@ class AllFilesWindow(ctk.CTkToplevel):
             self.msx_bridge.stop()
         self.syncer.log = self.original_status_callback
 
-        # Só chamamos destroy() se formos um widget real (não embutido)
         if hasattr(self, "master") and isinstance(self, ctk.CTkToplevel):
             try:
                 self.destroy()
@@ -371,19 +366,38 @@ class AllFilesWindow(ctk.CTkToplevel):
         self.search_entry.delete(0, "end")
         self.apply_search()
 
+    def select_row(self, row_frame):
+        # Desmarca a linha anterior
+        if self.selected_row_frame and self.selected_row_frame.winfo_exists():
+            self.selected_row_frame.configure(fg_color="transparent")
+
+        # Marca a nova linha
+        self.selected_row_frame = row_frame
+        row_frame.configure(fg_color="#3B3B3B")  # Cor de destaque (cinza escuro)
+
     def refresh_list(self):
         for widget in self.scroll_frame.winfo_children(): widget.destroy()
+        self.selected_row_frame = None
+
         start = self.current_page * self.items_per_page
         page_items = self.filtered_data[start:start + self.items_per_page]
         total_pages = max(1, (len(self.filtered_data) + self.items_per_page - 1) // self.items_per_page)
         self.page_label.configure(text=f"Pag {self.current_page + 1}/{total_pages} ({len(self.filtered_data)} arq)")
+
+        if hasattr(self, "master") and self.master:
+            actual_parent = self.master.winfo_toplevel()
+        else:
+            actual_parent = self.winfo_toplevel() if hasattr(self, "tk") else self
+
         for path in page_items:
-            row = ctk.CTkFrame(self.scroll_frame)
-            row.pack(fill="x", pady=1, padx=2)
+            # Row Frame: fg_color transparente por padrão, cursor de mão
+            row = ctk.CTkFrame(self.scroll_frame, fg_color="transparent")
+            row.pack(fill="x", pady=0, padx=2)  # pady=0 para ficar bem colado
+
             filename = path.split('/')[-1]
             local_path = os.path.join("downloads", path.replace("/", os.sep))
+            is_txt = filename.lower().endswith('.txt')
 
-            # Verificação de Container vs Arquivo Único Compactado
             is_real_container = False
             display_icon = ""
             if filename.lower().endswith('.zip') and os.path.exists(local_path):
@@ -391,107 +405,89 @@ class AllFilesWindow(ctk.CTkToplevel):
                     is_real_container = True
                     display_icon = "📦 "
 
-            ctk.CTkLabel(row, text=f"{display_icon}{filename}", anchor="w").pack(side="left", fill="x", expand=True,
-                                                                                 padx=5)
+            # Label de Nome: bind de clique para seleção visual
+            lbl = ctk.CTkLabel(row, text=f"{display_icon}{filename}", anchor="w", cursor="hand2")
+            lbl.pack(side="left", fill="x", expand=False, padx=5)
+            lbl.bind("<Button-1>", lambda e, r=row: self.select_row(r))
 
             actions_frame = ctk.CTkFrame(row, fg_color="transparent")
             actions_frame.pack(side="right")
+
             if os.path.exists(local_path):
                 if is_real_container:
                     ctk.CTkButton(actions_frame, text="Descompactar", width=100, fg_color="#E67E22",
                                   command=lambda lp=local_path, rp=path: self.handle_unzip_container(lp, rp)).pack(
-                        side="right", padx=2)
+                        side="right", padx=2, pady=1)
+                elif is_txt:
+                    ctk.CTkButton(actions_frame, text="View", width=60, fg_color="#1f538d",
+                                  command=lambda lp=local_path: TextViewerWindow(actual_parent, lp, filename)).pack(
+                        side="right", padx=2, pady=1)
                 else:
-                    # Se não for container real, tratamos como executável direto
                     ctk.CTkButton(actions_frame, text="Exec", width=60, fg_color="#2E7D32",
                                   command=lambda lp=local_path, rp=path: self.execute_file(lp, rp)).pack(side="right",
-                                                                                                         padx=2)
+                                                                                                         padx=2, pady=1)
 
-                ctk.CTkButton(actions_frame, text="Config", width=60,
-                              command=lambda p=path: self.open_file_config(p)).pack(side="right", padx=2)
+                if not is_txt:
+                    ctk.CTkButton(actions_frame, text="Config", width=60,
+                                  command=lambda p=path: self.open_file_config(p)).pack(side="right", padx=2, pady=1)
             else:
                 ctk.CTkButton(actions_frame, text="Baixar", width=60,
-                              command=lambda p=path: self.handle_download(p)).pack(side="right", padx=2)
+                              command=lambda p=path: self.handle_download(p)).pack(side="right", padx=2, pady=1)
 
     def is_nested_archive(self, zip_path):
-        """
-        Verifica se o ZIP é um container real (múltiplos arquivos ou ZIP/DSK interno).
-        Retorna False se contiver apenas um único arquivo .ROM, .DSK ou .CAS.
-        """
         try:
             if not zipfile.is_zipfile(zip_path):
                 return False
             with zipfile.ZipFile(zip_path, 'r') as z:
                 infolist = z.infolist()
-
-                # Se tiver mais de um arquivo, tratamos como container (diretório)
                 if len(infolist) > 1:
                     return True
-
-                # Se tiver apenas um, verificamos se é um arquivo de sistema ou mídia direta
                 if len(infolist) == 1:
                     name = infolist[0].filename.lower()
-                    # Se o arquivo único for outro ZIP ou algo que não seja mídia direta do MSX, é container
                     if name.endswith(('.zip', '.rar', '.7z')):
                         return True
-                    # Se for uma mídia direta, NÃO é container (mostra Exec)
                     if name.endswith(('.dsk', '.rom', '.mx1', '.mx2', '.cas')):
                         return False
-
-            return True  # Fallback para segurança
+            return True
         except Exception:
             pass
         return False
 
     def handle_unzip_container(self, local_path, relative_path):
-        """Extrai o container e registra os novos arquivos no banco de dados."""
         try:
             base_dir = os.path.dirname(local_path)
             folder_name = os.path.splitext(os.path.basename(local_path))[0]
             extract_path = os.path.join(base_dir, folder_name)
-
             os.makedirs(extract_path, exist_ok=True)
-
             with zipfile.ZipFile(local_path, 'r') as z:
                 z.extractall(extract_path)
 
-            # Registrar no Banco de Dados
-            # O caminho relativo no banco será: caminho/do/zip/nome_do_zip/arquivo_extraido
             new_files_to_register = []
             rel_base_path = os.path.dirname(relative_path)
-
             for root, dirs, files in os.walk(extract_path):
                 for file in files:
                     abs_f_path = os.path.join(root, file)
-                    # Calcula o caminho relativo para o banco (usando barras do servidor)
                     rel_suffix = os.path.relpath(abs_f_path, os.path.dirname(local_path)).replace(os.sep, '/')
                     db_path = f"{rel_base_path}/{rel_suffix}".strip('/')
                     new_files_to_register.append(db_path)
 
             if new_files_to_register:
-                # Usamos uma versão adaptada do populate para não apagar o banco todo
                 self.register_extracted_files(new_files_to_register)
 
             messagebox.showinfo("Sucesso",
-                                f"Container extraído em:\n{folder_name}\n\n{len(new_files_to_register)} novos itens adicionados à biblioteca.")
-            self.load_root_categories()  # Atualiza a árvore para mostrar a nova pasta
+                                f"Container extraído em:\n{folder_name}\n\n{len(new_files_to_register)} novos itens adicionados.")
+            self.load_root_categories()
             self.refresh_list()
-
         except Exception as e:
             messagebox.showerror("Erro na Extração", str(e))
 
     def register_extracted_files(self, file_paths):
-        """Injeta novos caminhos de arquivos no banco mantendo a hierarquia."""
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
-            # Precisamos pegar o cache de categorias atual para evitar duplicatas
-            cursor.execute("SELECT id, name, parent_id FROM categories")
-            # Lógica simplificada: para cada novo arquivo, garante que a estrutura de pastas existe
             for filepath in file_paths:
                 parts = filepath.split('/')
                 filename = parts[-1]
                 directories = parts[:-1]
-
                 current_parent_id = None
                 for dir_name in directories:
                     cursor.execute(
@@ -504,8 +500,6 @@ class AllFilesWindow(ctk.CTkToplevel):
                         cursor.execute("INSERT INTO categories (name, parent_id) VALUES (?, ?)",
                                        (dir_name, current_parent_id))
                         current_parent_id = cursor.lastrowid
-
-                # Verifica se arquivo já existe para não duplicar
                 cursor.execute("SELECT 1 FROM allfiles WHERE filepath = ?", (filepath,))
                 if not cursor.fetchone():
                     cursor.execute("INSERT INTO allfiles (filepath, filename, category_id) VALUES (?, ?, ?)",
@@ -532,16 +526,12 @@ class AllFilesWindow(ctk.CTkToplevel):
             self.refresh_list()
 
     def open_file_config(self, relative_path):
-        # Determinamos o mestre (janela principal) de forma segura
-        if hasattr(self, 'master') and self.master:
-            master = self.master.winfo_toplevel()
-        elif hasattr(self, 'winfo_toplevel'):
-            master = self.winfo_toplevel()
+        if hasattr(self, "master") and self.master:
+            actual_parent = self.master.winfo_toplevel()
         else:
-            # Fallback caso esteja em modo embed e self não seja widget
-            master = None
+            actual_parent = self.winfo_toplevel() if hasattr(self, "tk") else self
 
-        FileConfigWindow(master, self.db, relative_path)
+        FileConfigWindow(actual_parent, self.db, relative_path)
 
     def open_disk_manager(self):
         DiskManagerWindow(self)
@@ -557,17 +547,10 @@ class AllFilesWindow(ctk.CTkToplevel):
             self.refresh_list()
 
     def quit_application(self):
-        # Primeiro limpa a lógica (parar bridge, restaurar callbacks)
         self.on_close()
-
-        # Identifica a janela principal de forma segura para fechar tudo
         try:
-            if hasattr(self, 'master') and self.master:
-                root = self.master.winfo_toplevel()
-            else:
-                root = self.winfo_toplevel()
+            root = self.winfo_toplevel()
             root.destroy()
         except Exception:
-            # Fallback caso os widgets já tenham sido destruídos
             import sys
             sys.exit(0)
