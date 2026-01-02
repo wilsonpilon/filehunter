@@ -11,6 +11,7 @@ from datetime import datetime
 from gui.disk_manager_window import DiskManagerWindow
 from gui.file_config_window import FileConfigWindow
 from gui.text_viewer_window import TextViewerWindow
+from gui.pdf_viewer_window import PDFViewerWindow
 from support.msx_bridge import OpenMSXBridge
 
 
@@ -397,6 +398,7 @@ class AllFilesWindow(ctk.CTkToplevel):
             filename = path.split('/')[-1]
             local_path = os.path.join("downloads", path.replace("/", os.sep))
             is_txt = filename.lower().endswith('.txt')
+            is_pdf = filename.lower().endswith('.pdf')
 
             is_real_container = False
             display_icon = ""
@@ -423,12 +425,17 @@ class AllFilesWindow(ctk.CTkToplevel):
                                   hover_color="#1B5E20",
                                   command=lambda lp=local_path: TextViewerWindow(actual_parent, lp, filename)).pack(
                         side="right", padx=2, pady=1)
+                elif is_pdf:
+                    ctk.CTkButton(actions_frame, text="View", width=60, fg_color="#2E7D32",
+                                  hover_color="#1B5E20",
+                                  command=lambda lp=local_path: PDFViewerWindow(actual_parent, lp, filename)).pack(
+                        side="right", padx=2, pady=1)
                 else:
                     ctk.CTkButton(actions_frame, text="Exec", width=60, fg_color="#2E7D32",
                                   command=lambda lp=local_path, rp=path: self.execute_file(lp, rp)).pack(side="right",
                                                                                                          padx=2, pady=1)
 
-                if not is_txt:
+                if not is_txt and not is_pdf and not is_real_container:
                     ctk.CTkButton(actions_frame, text="Config", width=60,
                                   command=lambda p=path: self.open_file_config(p)).pack(side="right", padx=2, pady=1)
             else:
