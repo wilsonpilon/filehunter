@@ -419,7 +419,8 @@ class AllFilesWindow(ctk.CTkToplevel):
                                   command=lambda lp=local_path, rp=path: self.handle_unzip_container(lp, rp)).pack(
                         side="right", padx=2, pady=1)
                 elif is_txt:
-                    ctk.CTkButton(actions_frame, text="View", width=60, fg_color="#1f538d",
+                    ctk.CTkButton(actions_frame, text="View", width=60, fg_color="#2E7D32",
+                                  hover_color="#1B5E20",
                                   command=lambda lp=local_path: TextViewerWindow(actual_parent, lp, filename)).pack(
                         side="right", padx=2, pady=1)
                 else:

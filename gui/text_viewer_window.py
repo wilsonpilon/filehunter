@@ -1,109 +1,129 @@
 import customtkinter as ctk
 import tkinter as tk
+import ctypes
+import os
 
 
 class TextViewerWindow(ctk.CTkToplevel):
     def __init__(self, parent, file_path, title="Visualizador de Texto"):
         super().__init__(parent)
         self.title(f"FileHunter - {title}")
-        self.geometry("900x700")
-        self.configure(fg_color="#f0f0f0")  # Fundo claro para o "papel"
+        self.geometry("1100x850")
+        self.configure(fg_color="#f0f0f0")
 
-        # Tenta ler o conteúdo do arquivo
+        # Estado inicial
+        self.current_font_family = "Dotrice"
+        self.current_font_size = 12
+        self.chars_per_line = 80
+
+        self.load_all_fonts()
+
         try:
             with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
-                content = f.read()
+                self.content = f.read()
         except Exception as e:
-            content = f"Erro ao carregar arquivo: {e}"
+            self.content = f"Erro ao carregar arquivo: {e}"
 
-        # Layout principal
-        self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=1)
+        # --- BARRA DE FERRAMENTAS ---
+        self.toolbar = ctk.CTkFrame(self, height=50, fg_color="#dbdbdb")
+        self.toolbar.pack(side="top", fill="x", padx=20, pady=(10, 0))
 
-        # Container para o Papel Zebrado
-        self.paper_container = ctk.CTkFrame(self, fg_color="#e0e0e0", corner_radius=0)
-        self.paper_container.grid(row=0, column=0, sticky="nsew", padx=20, pady=20)
-        self.paper_container.grid_columnconfigure(0, weight=1)
-        self.paper_container.grid_rowconfigure(0, weight=1)
+        # Escolha da Fonte
+        ctk.CTkLabel(self.toolbar, text="Fonte:", text_color="black").pack(side="left", padx=(10, 2))
+        self.combo_font = ctk.CTkComboBox(self.toolbar, values=["Dotrice", "Consolas", "Courier", "Monospace"],
+                                          command=self.update_view, width=140)
+        self.combo_font.set("Dotrice")
+        self.combo_font.pack(side="left", padx=5)
 
-        # Canvas para desenhar as listras e furos
-        self.canvas = tk.Canvas(self.paper_container, bg="white", highlightthickness=0)
-        self.canvas.grid(row=0, column=0, sticky="nsew")
+        # Tamanho da Fonte
+        ctk.CTkLabel(self.toolbar, text="Tamanho:", text_color="black").pack(side="left", padx=(10, 2))
+        self.combo_size = ctk.CTkComboBox(self.toolbar, values=[str(x) for x in range(8, 26, 2)],
+                                          command=self.update_view, width=70)
+        self.combo_size.set("12")
+        self.combo_size.pack(side="left", padx=5)
 
-        # Texto (Usamos Text do Tkinter para controle total de transparência e scroll)
-        # Fonte: 'Dot Matrix' ou 'Consolas'/'Courier' como fallback.
-        # 'Fixedsys' também dá um ar bem retro.
-        font_retro = ("Consolas", 12)
+        # Largura em Caracteres
+        ctk.CTkLabel(self.toolbar, text="Colunas:", text_color="black").pack(side="left", padx=(10, 2))
+        self.combo_cols = ctk.CTkComboBox(self.toolbar, values=["40", "64", "80", "120", "132"],
+                                          command=self.update_view, width=80)
+        self.combo_cols.set("80")
+        self.combo_cols.pack(side="left", padx=5)
 
+        # --- ÁREA DE TEXTO (PAGINADA) ---
+        self.main_container = ctk.CTkFrame(self, fg_color="#e0e0e0", corner_radius=0)
+        self.main_container.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # Scrollbars
+        self.v_scroll = ctk.CTkScrollbar(self.main_container, orientation="vertical")
+        self.v_scroll.pack(side="right", fill="y")
+
+        self.h_scroll = ctk.CTkScrollbar(self.main_container, orientation="horizontal")
+        self.h_scroll.pack(side="bottom", fill="x")
+
+        # O widget de texto principal
         self.text_area = tk.Text(
-            self.canvas,
-            font=font_retro,
-            wrap="none",
+            self.main_container,
+            wrap="word",  # Word wrap ativado conforme solicitado
             bg="white",
             fg="#1a1a1a",
-            padx=50,  # Espaço para os furos
+            padx=20,
             pady=20,
             borderwidth=0,
             highlightthickness=0,
-            undo=False
+            yscrollcommand=self.v_scroll.set,
+            xscrollcommand=self.h_scroll.set
         )
+        self.text_area.pack(side="left", fill="both", expand=True)
 
-        # Scrollbar customizada
-        self.scrollbar = ctk.CTkScrollbar(self.paper_container, command=self.text_area.yview)
-        self.scrollbar.grid(row=0, column=1, sticky="ns")
-        self.text_area.configure(yscrollcommand=self.scrollbar.set)
-
-        self.text_area.insert("1.0", content)
-        self.text_area.configure(state="disabled")
-
-        # Posiciona o widget de texto dentro do canvas de forma expansível
-        self.canvas.create_window((0, 0), window=self.text_area, anchor="nw", tags="text_window")
-
-        # Bind para redesenhar o fundo quando redimensionar ou scrollar
-        self.text_area.bind("<Configure>", lambda e: self.draw_zebra())
-        self.text_area.bind("<Key>", lambda e: self.draw_zebra())  # Para garantir em alguns casos
+        self.v_scroll.configure(command=self.text_area.yview)
+        self.h_scroll.configure(command=self.text_area.xview)
 
         # Botão Sair
         self.btn_close = ctk.CTkButton(self, text="Fechar Impressão", fg_color="#A13333",
                                        hover_color="#7A2626", command=self.destroy)
-        self.btn_close.grid(row=1, column=0, pady=10)
+        self.btn_close.pack(pady=10)
 
+        # Configurar tags de cores para o zebrado
+        self.text_area.tag_configure("zebra_green", background="#e8f5e9")
+        self.text_area.tag_configure("zebra_white", background="white")
+
+        self.update_view()
         self.after(200, self.focus_force)
 
-    def draw_zebra(self):
-        """Desenha as faixas verdes e os furos de tração lateral"""
-        self.canvas.delete("zebra")
+    def load_all_fonts(self):
+        support_path = os.path.abspath("support")
+        if os.path.exists(support_path):
+            FR_PRIVATE = 0x10
+            for file in os.listdir(support_path):
+                if file.lower().endswith((".otf", ".ttf")):
+                    ctypes.windll.gdi32.AddFontResourceExW(os.path.join(support_path, file), FR_PRIVATE, 0)
 
-        width = self.text_area.winfo_width()
-        height = self.text_area.winfo_height()
+    def update_view(self, _=None):
+        self.current_font_family = self.combo_font.get()
+        self.current_font_size = int(self.combo_size.get())
+        self.chars_per_line = int(self.combo_cols.get())
 
-        line_height = 20  # Ajuste conforme o tamanho da fonte
+        # Configurar Fonte
+        weight = "bold" if "Dotrice" in self.current_font_family else "normal"
+        f_obj = (self.current_font_family, self.current_font_size, weight)
+        self.text_area.configure(font=f_obj)
 
-        # Cores do papel zebrado clássico
-        green_bar = "#e8f5e9"  # Verde bem clarinho
+        # Ajustar a largura do formulário (em caracteres)
+        self.text_area.configure(width=self.chars_per_line)
 
-        # Desenha as faixas
-        num_lines = int(height / line_height) + 2
-        for i in range(num_lines):
-            y_start = i * line_height
-            if i % 2 == 0:
-                self.canvas.create_rectangle(0, y_start, width, y_start + line_height,
-                                             fill=green_bar, outline="", tags="zebra")
+        # Atualizar conteúdo e aplicar zebrado
+        self.apply_content_and_zebra()
 
-            # Desenha os furos laterais (Esquerda e Direita)
-            hole_size = 8
-            padding = 15
-            # Furo esquerda
-            self.canvas.create_oval(padding, y_start + 6, padding + hole_size, y_start + 6 + hole_size,
-                                    fill="#d0d0d0", outline="#b0b0b0", tags="zebra")
-            # Furo direita
-            self.canvas.create_oval(width - padding - hole_size, y_start + 6, width - padding, y_start + 6 + hole_size,
-                                    fill="#d0d0d0", outline="#b0b0b0", tags="zebra")
+    def apply_content_and_zebra(self):
+        self.text_area.configure(state="normal")
+        self.text_area.delete("1.0", "end")
+        self.text_area.insert("1.0", self.content)
 
-        # Garante que o texto fique por cima das listras
-        self.canvas.tag_raise("text_window")
+        # Aplica o zebrado linha por linha
+        lines = self.text_area.get("1.0", "end-1c").split("\n")
+        for i in range(len(lines)):
+            line_num = i + 1
+            tag = "zebra_green" if i % 2 == 0 else "zebra_white"
+            self.text_area.tag_add(tag, f"{line_num}.0", f"{line_num}.end+1c")
 
-        # Atualiza a área do canvas para o scroll
-        self.canvas.config(scrollregion=self.canvas.bbox("all"))
-        # Ajusta o tamanho da janela de texto para o tamanho do canvas
-        self.canvas.itemconfig("text_window", width=width, height=max(height, num_lines * line_height))
+        self.text_area.configure(state="disabled")
