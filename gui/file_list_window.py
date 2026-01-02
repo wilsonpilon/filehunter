@@ -9,6 +9,7 @@ import glob
 import shutil
 from datetime import datetime
 from gui.disk_manager_window import DiskManagerWindow
+from gui.image_viewer_window import ImageViewerWindow
 from gui.file_config_window import FileConfigWindow
 from gui.text_viewer_window import TextViewerWindow
 from gui.pdf_viewer_window import PDFViewerWindow
@@ -400,6 +401,19 @@ class AllFilesWindow(ctk.CTkToplevel):
             is_txt = filename.lower().endswith('.txt')
             is_pdf = filename.lower().endswith('.pdf')
 
+            # Busca screenshots correspondentes de forma simplificada
+            # path: "Games/MSX1/DSK/alcatraz-bra.zip"
+            # alvo: "screenshots/Games/MSX1/DSK/alcatraz-bra*.png"
+
+            # Remove a extensão do path original (ex: .zip) e troca as barras
+            rel_path_no_ext = os.path.splitext(path)[0].replace("/", os.sep)
+
+            # Junta com o prefixo screenshots e o wildcard para as imagens
+            pattern = os.path.join("screenshots", rel_path_no_ext + "*.png")
+
+            # Busca as imagens usando o caminho absoluto para garantir precisão
+            screenshots = sorted(glob.glob(os.path.abspath(pattern)))
+
             is_real_container = False
             display_icon = ""
             if filename.lower().endswith('.zip') and os.path.exists(local_path):
@@ -434,6 +448,11 @@ class AllFilesWindow(ctk.CTkToplevel):
                     ctk.CTkButton(actions_frame, text="Exec", width=60, fg_color="#2E7D32",
                                   command=lambda lp=local_path, rp=path: self.execute_file(lp, rp)).pack(side="right",
                                                                                                          padx=2, pady=1)
+
+                if screenshots:
+                    ctk.CTkButton(actions_frame, text="View", width=60, fg_color="#1f538d",
+                                  command=lambda s=screenshots, f=filename: ImageViewerWindow(actual_parent, s, f)).pack(
+                        side="right", padx=2, pady=1)
 
                 if not is_txt and not is_pdf and not is_real_container:
                     ctk.CTkButton(actions_frame, text="Config", width=60,
