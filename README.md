@@ -8,7 +8,7 @@ O **FileHunter MSX Manager** é um frontend moderno em Python desenvolvido para 
 
 Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Images, etc), baixando as listagens oficiais (`allfiles.txt` e `sha1sums.txt`) e armazenando-as em um banco de dados local SQLite. Ele permite que usuários de MSX mantenham uma cópia local organizada e sempre atualizada da estrutura de arquivos do site, com verificação automática de integridade.
 
-![Interface do Aplicativo](images/application5.png)
+![Interface do Aplicativo](images/application6.png)
 
 ## ✨ Funcionalidades Atuais
 
@@ -19,20 +19,23 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
 - **Busca Recursiva por Pastas**: Ao selecionar um diretório, o sistema exibe todos os arquivos contidos nele e em seus subdiretórios (Aggregation View).
 - **Splash Screen com Efeito Fade**: Inicialização elegante com redimensionamento dinâmico de imagem e transição suave.
 - **Gerenciador de Arquivos Paginado**: Navegação fluida em milhares de registros com suporte a:
-        - **Detecção Inteligente de Containers**: Identificação automática de arquivos ZIP que contêm outros arquivos compactados ou imagens de disco (ZIP dentro de ZIP) através do ícone `📦`.
-        - **Extração e Catalogação Automática**: Botão "Descompactar" para containers, que extrai o conteúdo para uma subpasta local e registra instantaneamente os novos arquivos no banco de dados, permitindo a navegação hierárquica imediata.
-        - **Busca por Expressões Regulares (Regex)**: Filtragem poderosa de arquivos.
-        - **Download em Massa**: Botão "Baixar Todos" disponível para coleções completas em diretórios finais.
-        - **Verificação de Integridade (SHA1)**: Confirmação automática após o download para garantir que o arquivo não foi corrompido.
-        - **Execução Inteligente (openMSX)**: Integração direta com o emulador openMSX, detectando automaticamente o tipo de mídia (Disk ou ROM) através da estrutura de pastas e extensões.
-        - **Log de Conferência**: Exibição em tempo real da linha de comando enviada ao emulador na área de status, facilitando o ajuste de configurações.
-        - **Temas Customizáveis**: Suporte total a temas Dark/Light via configurações integradas ao banco de dados.
+    - **Detecção Inteligente de Containers**: Identificação automática de arquivos ZIP que contêm outros arquivos compactados ou imagens de disco (ZIP dentro de ZIP) através do ícone `📦`.
+    - **Visualizador de Screenshots (Slideshow)**: Identificação automática de imagens correspondentes na pasta `screenshots`. Se existirem imagens capturadas para um título, um botão "View" adicional permite visualizá-las em um carrossel interativo.
+    - **Extração e Catalogação Automática**: Botão "Descompactar" para containers, que extrai o conteúdo para uma subpasta local e registra instantaneamente os novos arquivos no banco de dados, permitindo a navegação hierárquica imediata.
+    - **Busca por Expressões Regulares (Regex)**: Filtragem poderosa de arquivos.
+    - **Download em Massa**: Botão "Baixar Todos" disponível para coleções completas em diretórios finais.
+    - **Verificação de Integridade (SHA1)**: Confirmação automática após o download para garantir que o arquivo não foi corrompido.
+    - **Execução Inteligente (openMSX)**: Integração direta com o emulador openMSX, detectando automaticamente o tipo de mídia (Disk ou ROM) através da estrutura de pastas e extensões.
+    - **Log de Conferência**: Exibição em tempo real da linha de comando enviada ao emulador na área de status, facilitando o ajuste de configurações.
+    - **Temas Customizáveis**: Suporte total a temas Dark/Light via configurações integradas ao banco de dados.
 - **Gerenciador de Discos Unificado**: Introdução da interface para manipular arquivos `.dsk`, com suporte a extração, exclusão e criação de novos discos.
 - **Suporte a ZIP no Disk Manager**: Possibilidade de abrir arquivos ZIP e injetar seu conteúdo diretamente em imagens de disco MSX.
 - **Expansão de Slots de Extensão**: Aumento de 2 para **4 slots de extensões simultâneas** para o openMSX, permitindo combinações complexas de hardware (ex: Moonsound + GFX9000 + FM-PAC).
 
 ## 🛠️ Estabilidade e Correções Recentes
 
+- **Update (Visualizador de Imagens)**: Implementação de um visualizador nativo com suporte a redimensionamento proporcional e navegação via teclado (Setas Esquerda/Direita).
+- **Fix (Mapeamento de Mídia)**: Correção na lógica de detecção de diretórios para screenshots, garantindo que o caminho relativo do banco de dados seja respeitado sem duplicação de pastas.
 - **Update (Lançador openMSX)**: Implementada a detecção dinâmica de tipos de mídia via caminhos absolutos. Arquivos em diretórios `\DSK\` são montados automaticamente no Drive A (`-diska`), enquanto arquivos em `\ROM\` (incluindo `.MX1` e `.MX2`) são carregados como cartuchos (`-carta`).
 - **Fix (Execução no Windows)**: Adicionadas flags de criação de processo (`DETACHED_PROCESS`) e definição de diretório de trabalho (`cwd`), garantindo que o emulador abra corretamente mesmo quando o caminho possui espaços.
 - **Melhoria na UI**: O comando completo de execução agora é mostrado no console de status para conferência do usuário.
@@ -97,6 +100,10 @@ Este software automatiza o processo de catalogação de arquivos (ROMs, Disk Ima
 ---
 
 ## 📜 Histórico de Versões e Atualizações
+
+### [v1.3.0] - Visualização de Mídia e Screenshots (Atual)
+- **Slideshow de Screenshots**: Integração com a pasta de capturas do openMSX. O sistema agora detecta automaticamente imagens correspondentes e oferece um visualizador integrado.
+- **Lógica de Caminhos Robusta**: Normalização de caminhos entre banco de dados e sistema de arquivos local para garantir a detecção de mídias em qualquer plataforma.
 
 ### [v1.2.5] - Inteligência de Arquivos e Containers (Atual)
 - **Suporte a ZIP Aninhado**: O sistema agora identifica containers e oferece extração direta com reinjeção no banco de dados.
